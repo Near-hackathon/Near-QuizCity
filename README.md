@@ -63,10 +63,13 @@ npm ci
 cp server/.env.example server/.env        # set DATABASE_URL, operator key
 # Local demo only: APP_ENV=local, HOST=127.0.0.1, NEAR_NETWORK=testnet, DEMO_MODE=1
 createdb quizcity
-npm run db:push
+npm run db:push                       # applies ordered SQL migrations from server/db/migrations/
+npm run db:seed                       # demo quiz, job, NPC, and connected world seed (idempotent)
+# npm run db:reset requires --confirm-local-reset and APP_ENV=local|test
+# npm run db:test runs PostgreSQL integration tests against TEST_DATABASE_URL
 
 # 2. Contract checks (only needed if you change the contract)
-npm run contract:test                     # 44 unit tests
+npm run contract:test                     # 49 unit tests
 npm run contract:fmt:check
 npm run contract:clippy                   # includes the demo-reset feature
 npm run contract:build                    # production WASM, no demo helpers
@@ -136,11 +139,14 @@ All mutating routes require a `txHash` (and an `accountId` where relevant).
 
 ```bash
 npm run verify                             # all checks listed below
+npm run db:test                            # PostgreSQL integration tests (TEST_DATABASE_URL, temporary schemas)
 npm run e2e                                # full player loop against testnet
 npm run exploit                            # 13 adversarial checks (mutates demo state)
 ```
 
-`npm run verify` runs the production contract tests (49), demo-reset contract tests (52), 57 server tests, the toolchain and WASM-export checker tests, formatting/linting/typechecks, both builds, and a production-WASM check that reads real function exports and rejects demo helpers.
+`npm run verify` runs the production contract tests (49), demo-reset contract tests (52), 92 server tests, the toolchain and WASM-export checker tests, formatting/linting/typechecks, both builds, and a production-WASM check that reads real function exports and rejects demo helpers. `npm run db:test` executes 50 PostgreSQL integration tests for migrations, ledger atomicity/conflict behavior, quiz snapshots, job payment races/reconciliation, and the world seed against disposable schemas.
+
+`e2e` and `exploit` mutate testnet state. They are intentionally deferred while the Phase 1 live deployment/key work remains owner-gated; do not treat them as current evidence until the corrected contract is deployed and approved.
 
 `e2e` drives register → claim → job → quiz → property → business → transfer and asserts exact balances. `exploit` mutates demo state, so reset afterwards (below). It covers forged hashes, cross-account transaction use, SQL injection in paths, answer leakage, quiz replay, non-employee job completion, request-tampered payment amounts, demo-key leakage, and ledger duplication.
 
@@ -151,8 +157,8 @@ Expected end state: Alice 225 QC, Bob 480 QC, Kofi 1,200 QC (900 after the job +
 ```bash
 npm run contract:build:demo   # demo build includes migrate_reset
 NEAR_DEPLOY_PRIVATE_KEY=<contract-account-full-access-key> npm run chain:seed
-npm run db:reset              # drop/apply schema
-npm run db:seed               # quiz, job, NPC rows
+npm run db:reset              # destructive mirror reset (requires --confirm-local-reset, local/test only)
+npm run db:seed               # quiz, job, NPC, and connected world rows
 ```
 
 The root `chain:seed` script rebuilds the demo artifact, runs the demo ABI check, prints its SHA-256, and refuses to deploy a WASM that lacks `migrate_reset`/`reset_demo`. `migrate_reset` is `#[private]`: only the contract account can call it, and the migrated operator is the contract account. The demo build is disposable. `migrate_reset` writes fresh collection prefixes, so prior demo entries are orphaned rather than migrated. Production builds omit `reset_demo` and `migrate_reset`; the verify step asserts this against the WASM.
@@ -200,7 +206,7 @@ npm run payout-key:verify -- --public-key ed25519:<new-key>
 npm run verify
 ```
 
-In order: Rust toolchain pin check; Prettier and `cargo fmt --check`; ESLint (runtime-specific globals) and `cargo clippy -D warnings`; TypeScript for server and web; 49 production contract tests, 52 demo-reset contract tests, 57 server tests, and the toolchain/WASM-export checker tests; then the contract WASM, server typecheck, and production web build; finally the production-WASM demo-helper check, which inspects `WebAssembly.Module.exports` rather than raw bytes. `npm ci && npm run verify` works without `server/.env`.
+In order: Rust toolchain pin check; Prettier and `cargo fmt --check`; ESLint (runtime-specific globals) and `cargo clippy -D warnings`; TypeScript for server and web; 49 production contract tests, 52 demo-reset contract tests, 92 server tests, and the toolchain/WASM-export checker tests; then the contract WASM, server typecheck, and production web build; finally the production-WASM demo-helper check, which inspects `WebAssembly.Module.exports` rather than raw bytes. `npm ci && npm run verify` works without `server/.env`.
 
 The same command runs in `.github/workflows/verify.yml` on Node 20.20 and Rust 1.95, with the WASM checksum recorded as an artifact.
 

@@ -1,4 +1,5 @@
 import { sql } from "../src/db.js";
+import { seedWorld } from "../db/seeds/world.js";
 
 const questions = [
   {
@@ -105,4 +106,6 @@ await sql`
 `;
 
 console.log("seeded quiz, job, and NPC state");
+await seedWorld(sql);
+console.log("seeded world model");
 await sql.end();

@@ -45,7 +45,15 @@ export type Job = {
   title: string;
   description: string;
   payment: string;
-  status: "open" | "accepted" | "completed" | "paid" | "cancelled";
+  status:
+    | "open"
+    | "accepted"
+    | "submitted"
+    | "verified"
+    | "payment_pending"
+    | "paid"
+    | "payment_failed"
+    | "cancelled";
   chain_tx: string | null;
 };
 
@@ -126,8 +134,12 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 export const api = {
   config: () => get<ServerConfig>("/config"),
   demoAccounts: () => get<DemoAccounts>("/demo/accounts"),
-  register: (accountId: string, txHash: string) =>
-    post<{ username: string; starter_claimed: boolean }>("/players/register", { accountId, txHash }),
+  register: (accountId: string, username: string, txHash: string) =>
+    post<{ username: string; starter_claimed: boolean }>("/players/register", {
+      accountId,
+      username,
+      txHash,
+    }),
   claim: (accountId: string, txHash: string) =>
     post<{ balance: string }>("/players/claim", { accountId, txHash }),
   player: (accountId: string) =>
@@ -141,6 +153,10 @@ export const api = {
   jobs: () => get<Job[]>("/jobs"),
   businesses: () => get<Business[]>("/businesses"),
   acceptJob: (id: string, accountId: string) => post<Job>(`/jobs/${id}/accept`, { accountId }),
+  submitJob: (id: string, accountId: string, deliverable: string) =>
+    post<Job>(`/jobs/${id}/submit`, { accountId, deliverable }),
+  verifyJob: (id: string, notes?: string) => post<Job>(`/jobs/${id}/verify`, { notes }),
+  retryJobPayment: (id: string) => post<{ job: Job }>(`/jobs/${id}/retry-payment`, {}),
   completeJob: (id: string, accountId: string) =>
     post<{ job: Job; txHash: string; balance: string }>(`/jobs/${id}/complete`, { accountId }),
   startQuiz: (id: string, accountId: string) => post<Attempt>(`/quizzes/${id}/start`, { accountId }),

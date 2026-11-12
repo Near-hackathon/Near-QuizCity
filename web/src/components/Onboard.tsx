@@ -51,7 +51,7 @@ export function Onboard({ session, chainPlayer, onLogin, onLogout, refresh }: Pr
     if (!session) return;
     void run(async () => {
       const hash = await call(session, "register_player", { username });
-      await api.register(session.accountId, hash);
+      await api.register(session.accountId, username, hash);
     });
   }
 

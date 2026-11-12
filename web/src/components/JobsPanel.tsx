@@ -38,9 +38,9 @@ export function JobsPanel({ jobs, me, busy, onAccept, onComplete }: Props) {
                     Accept job
                   </button>
                 )}
-                {mine && (job.status === "accepted" || job.status === "completed") && (
+                {mine && ["accepted", "submitted", "verified", "payment_failed"].includes(job.status) && (
                   <button className="btn primary" disabled={busy} onClick={() => onComplete(job)}>
-                    Complete & get paid
+                    Submit, verify & get paid
                   </button>
                 )}
                 {job.status === "paid" && job.chain_tx && (

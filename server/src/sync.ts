@@ -1,3 +1,4 @@
+import type { Sql, TransactionSql } from "postgres";
 import { sql } from "./db.js";
 import { viewAllBusinesses, viewAllProperties, viewContract, type ContractStats } from "./near.js";
 
@@ -13,19 +14,29 @@ export function classify(walletId: string): { ownerType: string; ownerId: string
 
 let lastFingerprint = "";
 
+export type WalletSql = Sql | TransactionSql;
+
 export async function getMirroredBalance(walletId: string): Promise<number> {
   const [row] = await sql<{ balance: string }[]>`select balance from wallets where wallet_id = ${walletId}`;
   return Number(row?.balance ?? 0);
 }
 
-export async function refreshWallet(walletId: string, atLeast?: number): Promise<string> {
+export async function readChainBalance(walletId: string, atLeast?: number): Promise<string> {
   let balance = await viewContract<string>("get_balance", { wallet: walletId });
   for (let attempt = 0; atLeast !== undefined && Number(balance) < atLeast && attempt < 6; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 400));
     balance = await viewContract<string>("get_balance", { wallet: walletId });
   }
+  return balance;
+}
+
+export async function setMirroredBalance(
+  client: WalletSql,
+  walletId: string,
+  balance: string,
+): Promise<void> {
   const { ownerType, ownerId } = classify(walletId);
-  await sql`
+  await client`
     insert into wallets (wallet_id, owner_type, owner_id, balance, updated_at)
     values (${walletId}, ${ownerType}, ${ownerId}, ${balance}, now())
     on conflict (wallet_id) do update set
@@ -34,6 +45,11 @@ export async function refreshWallet(walletId: string, atLeast?: number): Promise
       owner_id = excluded.owner_id,
       updated_at = now()
   `;
+}
+
+export async function refreshWallet(walletId: string, atLeast?: number): Promise<string> {
+  const balance = await readChainBalance(walletId, atLeast);
+  await setMirroredBalance(sql, walletId, balance);
   return balance;
 }
 

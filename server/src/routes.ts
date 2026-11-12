@@ -1,11 +1,25 @@
-import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import type { Sql } from "postgres";
+import { config } from "./runtime-config.js";
 import { sql } from "./db.js";
 import { viewAllBusinesses, viewContract } from "./near.js";
-import { creditReward, payJob } from "./operator.js";
-import { getMirroredBalance, refreshWallet } from "./sync.js";
+import { creditReward, payJob, type OperatorResult } from "./operator.js";
+import { jobPaymentReference, reserveJobPayment, safeErrorMessage } from "./jobs.js";
+import { getMirroredBalance, readChainBalance, setMirroredBalance } from "./sync.js";
 import { propertySaleFromReceipts, ReceiptError, servicePaymentReceipt } from "./event-ledger.js";
-import { assertTxSucceeded, parseEvents } from "./verify.js";
+import type { ValidatedEvent } from "./event-validation.js";
+import { ledgerEntriesFromEvents } from "./record-chain-events.js";
+import { insertLedgerEntries } from "./ledger.js";
+import {
+  attemptExpired,
+  reserveQuizReward,
+  scoreSnapshot,
+  snapshotQuestions,
+  startQuizAttempt,
+  QuizError,
+  type SnapshotQuestion,
+} from "./quiz.js";
+import { requireExpectedEvent, verifyExpectedFunctionCall, verifyOperatorOutcome } from "./verify.js";
 
 type ChainPlayer = {
   username: string;
@@ -26,9 +40,6 @@ type ChainProperty = {
 };
 
 const STARTER_ALLOWANCE = 500;
-const QUIZ_REWARD = 25;
-const QUIZ_PASS_MARK = 6;
-const QUIZ_WINDOW_MS = 10 * 60 * 1000;
 
 function fail(message: string, status = 400): never {
   const error = new Error(message) as Error & { statusCode: number };
@@ -51,29 +62,125 @@ function playerWallet(accountId: string): string {
   return `player:${accountId}`;
 }
 
-async function recordTx(
-  txHash: string,
-  from: string,
-  to: string,
-  amount: number,
-  kind: string,
-  reference: string | null = null,
-): Promise<void> {
-  await sql`
-    insert into transactions (tx_hash, wallet_from, wallet_to, amount, kind, reference)
-    values (${txHash}, ${from}, ${to}, ${amount}, ${kind}, ${reference})
-    on conflict do nothing
-  `;
+function rewardDayOf(value: unknown): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
 }
 
-export function registerRoutes(app: FastifyInstance): void {
+function attemptResult(attempt: Record<string, unknown>, alreadySubmitted: boolean) {
+  return {
+    score: Number(attempt.score),
+    total: Number(attempt.total),
+    reward: Number(attempt.reward_paid),
+    txHash: (attempt.reward_tx as string | null) ?? null,
+    alreadySubmitted,
+    status: attempt.status as string,
+  };
+}
+
+export type RouteDeps = {
+  db: Sql;
+  viewContract: typeof viewContract;
+  viewAllBusinesses: typeof viewAllBusinesses;
+  creditReward: typeof creditReward;
+  payJob: typeof payJob;
+  readChainBalance: typeof readChainBalance;
+  setMirroredBalance: typeof setMirroredBalance;
+  getMirroredBalance: typeof getMirroredBalance;
+  verifyExpectedFunctionCall: typeof verifyExpectedFunctionCall;
+  verifyOperatorOutcome: typeof verifyOperatorOutcome;
+  insertLedgerEntries: typeof insertLedgerEntries;
+};
+
+const defaultDeps: RouteDeps = {
+  db: sql,
+  viewContract,
+  viewAllBusinesses,
+  creditReward,
+  payJob,
+  readChainBalance,
+  setMirroredBalance,
+  getMirroredBalance,
+  verifyExpectedFunctionCall,
+  verifyOperatorOutcome,
+  insertLedgerEntries,
+};
+
+export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDeps): void {
+  const {
+    db,
+    viewContract,
+    viewAllBusinesses,
+    creditReward,
+    payJob,
+    readChainBalance,
+    setMirroredBalance,
+    getMirroredBalance,
+    verifyExpectedFunctionCall,
+    verifyOperatorOutcome,
+    insertLedgerEntries,
+  } = deps;
+
+  function jobPaymentExpectation(job: Record<string, unknown>) {
+    const employeeWallet = playerWallet(String(job.employee_account));
+    const reference = String(job.payment_reference ?? jobPaymentReference(String(job.id)));
+    return {
+      employeeWallet,
+      reference,
+      expectation: {
+        signerId: config.operatorAccount,
+        method: "pay_job",
+        args: {
+          employer_wallet: String(job.employer_wallet),
+          employee_wallet: employeeWallet,
+          amount: String(job.payment),
+          reference,
+        },
+        events: [
+          {
+            name: "job_reward",
+            entityId: employeeWallet,
+            walletFrom: String(job.employer_wallet),
+            walletTo: employeeWallet,
+            amount: String(job.payment),
+            reference,
+          },
+        ],
+      },
+    };
+  }
+
+  async function finalizeJobPayment(job: Record<string, unknown>, txHash: string, events: ValidatedEvent[]) {
+    const { employeeWallet } = jobPaymentExpectation(job);
+    const employerWallet = String(job.employer_wallet);
+    const employeeBalance = await readChainBalance(employeeWallet);
+    const employerBalance = await readChainBalance(employerWallet);
+    const updated = await db.begin(async (transaction) => {
+      await setMirroredBalance(transaction, employeeWallet, employeeBalance);
+      await setMirroredBalance(transaction, employerWallet, employerBalance);
+      await insertLedgerEntries(transaction, ledgerEntriesFromEvents(events));
+      const [finalized] = await transaction`
+        update jobs
+        set status = 'paid', chain_tx = ${txHash}, paid_at = now(), last_error = null
+        where id = ${String(job.id)} and status in ('payment_pending', 'payment_failed')
+        returning *
+      `;
+      if (finalized) return finalized;
+      const [current] = await transaction`
+        select * from jobs where id = ${String(job.id)}
+      `;
+      if (current?.status === "paid" && current.chain_tx === txHash) return current;
+      throw new Error("job payment state changed before finalization");
+    });
+    return { job: updated, balance: employeeBalance };
+  }
   app.get("/players/:account", async (request) => {
     const { account } = request.params as { account: string };
     const [player] =
-      await sql`select account_id, username, reputation, created_at from players where account_id = ${account}`;
+      await db`select account_id, username, reputation, created_at from players where account_id = ${account}`;
     if (!player) fail("player not found", 404);
     const [wallet] =
-      await sql`select balance, updated_at from wallets where wallet_id = ${playerWallet(account)}`;
+      await db`select balance, updated_at from wallets where wallet_id = ${playerWallet(account)}`;
     return { ...player, wallet: wallet ?? null };
   });
 
@@ -81,15 +188,29 @@ export function registerRoutes(app: FastifyInstance): void {
     const body = request.body as Record<string, unknown>;
     const accountId = text(body.accountId, "accountId");
     const txHash = text(body.txHash, "txHash");
-    await assertTxSucceeded(txHash, accountId);
+    const username = text(body.username, "username");
+
+    const verified = await verifyExpectedFunctionCall(txHash, {
+      signerId: accountId,
+      method: "register_player",
+      args: { username },
+      events: [{ name: "player_registered", entityId: `player:${accountId}` }],
+    });
     const chainPlayer = await viewContract<ChainPlayer | null>("get_player", { account: accountId });
     if (!chainPlayer) fail("player is not registered on chain", 409);
-    await sql`
-      insert into players (account_id, username)
-      values (${accountId}, ${chainPlayer.username})
-      on conflict (account_id) do update set username = excluded.username
-    `;
-    await refreshWallet(playerWallet(accountId));
+    if (chainPlayer.username !== username) fail("chain username does not match the request", 409);
+
+    const wallet = playerWallet(accountId);
+    const balance = await readChainBalance(wallet);
+    await db.begin(async (transaction) => {
+      await transaction`
+        insert into players (account_id, username)
+        values (${accountId}, ${chainPlayer.username})
+        on conflict (account_id) do update set username = excluded.username
+      `;
+      await setMirroredBalance(transaction, wallet, balance);
+      await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
+    });
     return { accountId, username: chainPlayer.username, starter_claimed: chainPlayer.starter_claimed };
   });
 
@@ -97,19 +218,28 @@ export function registerRoutes(app: FastifyInstance): void {
     const body = request.body as Record<string, unknown>;
     const accountId = text(body.accountId, "accountId");
     const txHash = text(body.txHash, "txHash");
-    await assertTxSucceeded(txHash, accountId);
+    const wallet = playerWallet(accountId);
+
+    const verified = await verifyExpectedFunctionCall(txHash, {
+      signerId: accountId,
+      method: "claim_starter",
+      args: {},
+      events: [{ name: "starter_allowance", entityId: wallet }],
+    });
     const chainPlayer = await viewContract<ChainPlayer | null>("get_player", { account: accountId });
     if (!chainPlayer?.starter_claimed) fail("starter allowance not confirmed on chain", 409);
-    const wallet = playerWallet(accountId);
-    const balance = await refreshWallet(wallet, STARTER_ALLOWANCE);
-    await recordTx(txHash, "system:mint", wallet, STARTER_ALLOWANCE, "starter_allowance", accountId);
+    const balance = await readChainBalance(wallet, STARTER_ALLOWANCE);
+    await db.begin(async (transaction) => {
+      await setMirroredBalance(transaction, wallet, balance);
+      await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
+    });
     return { balance };
   });
 
-  app.get("/jobs", async () => sql`select * from jobs order by created_at desc`);
+  app.get("/jobs", async () => db`select * from jobs order by created_at desc`);
 
   app.get("/npcs", async () => {
-    const npcs = await sql<
+    const npcs = await db<
       {
         npc_id: string;
         wallet_id: string;
@@ -132,8 +262,8 @@ export function registerRoutes(app: FastifyInstance): void {
   app.post("/jobs/:id/accept", async (request) => {
     const { id } = request.params as { id: string };
     const accountId = text((request.body as Record<string, unknown>).accountId, "accountId");
-    const [job] = await sql`
-      update jobs set employee_account = ${accountId}, status = 'accepted'
+    const [job] = await db`
+      update jobs set employee_account = ${accountId}, status = 'accepted', accepted_at = now()
       where id = ${id} and status = 'open'
       returning *
     `;
@@ -141,42 +271,164 @@ export function registerRoutes(app: FastifyInstance): void {
     return job;
   });
 
+  app.post("/jobs/:id/submit", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as Record<string, unknown>;
+    const accountId = text(body.accountId, "accountId");
+    const deliverable = text(body.deliverable, "deliverable");
+    const [job] = await db`
+      update jobs
+      set status = 'submitted', deliverable = ${deliverable}, submitted_at = now()
+      where id = ${id} and status = 'accepted' and employee_account = ${accountId}
+      returning *
+    `;
+    if (!job) fail("job is not ready to submit", 409);
+    return job;
+  });
+
+  app.post("/jobs/:id/verify", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as Record<string, unknown>;
+    const notes = typeof body.notes === "string" ? body.notes.slice(0, 500) : null;
+    const [job] = await db`
+      update jobs
+      set status = 'verified', verification_notes = ${notes}, verified_at = now()
+      where id = ${id} and status = 'submitted'
+      returning *
+    `;
+    if (!job) fail("job is not awaiting verification", 409);
+    return job;
+  });
+
   app.post("/jobs/:id/complete", async (request) => {
     const { id } = request.params as { id: string };
     const accountId = text((request.body as Record<string, unknown>).accountId, "accountId");
-    const [job] = await sql`select * from jobs where id = ${id}`;
+    const [job] = await db`select * from jobs where id = ${id}`;
     if (!job) fail("job not found", 404);
-    if (job.status === "paid") return { job, txHash: job.chain_tx };
     if (job.employee_account !== accountId) fail("you did not accept this job", 403);
-    if (!["accepted", "completed"].includes(job.status)) fail("job is not in progress", 409);
+    if (job.status === "paid") return { job, txHash: job.chain_tx, alreadyPaid: true };
+    if (job.status === "payment_pending") {
+      return { job, txHash: null, paymentPending: true };
+    }
+    if (job.status === "payment_failed") {
+      fail("job payment previously failed; reconcile before retrying", 409);
+    }
+    if (job.status !== "verified") fail("job must be verified before payment", 409);
 
-    const wallet = playerWallet(accountId);
-    const previous = await getMirroredBalance(wallet);
-    let txHash: string;
+    const reserved = await reserveJobPayment(db, id);
+    if (!reserved) {
+      const [current] = await db`select * from jobs where id = ${id}`;
+      if (current?.status === "paid") {
+        return { job: current, txHash: current.chain_tx, alreadyPaid: true };
+      }
+      return { job: current, txHash: null, paymentPending: true };
+    }
+
+    const { employeeWallet, reference, expectation } = jobPaymentExpectation(reserved);
+    let result: OperatorResult;
     try {
-      txHash = await payJob(job.employer_wallet, wallet, Number(job.payment), job.reference);
-    } catch {
+      result = await payJob(
+        String(reserved.employer_wallet),
+        employeeWallet,
+        Number(reserved.payment),
+        reference,
+      );
+    } catch (error) {
+      await db`
+        update jobs set status = 'payment_failed', last_error = ${safeErrorMessage(error)}
+        where id = ${id} and status = 'payment_pending'
+      `;
       fail("NPC budget cannot cover this job right now", 409);
     }
-    const balance = await refreshWallet(wallet, previous + Number(job.payment));
-    await refreshWallet(job.employer_wallet);
-    await recordTx(
-      txHash,
-      "system:mint",
-      playerWallet(accountId),
-      Number(job.payment),
-      "job_reward",
-      job.reference,
-    );
-    const [updated] = await sql`
-      update jobs set status = 'paid', chain_tx = ${txHash}
-      where id = ${id} returning *
+
+    // Persist the hash immediately so a local finalization failure remains
+    // recoverable without calling pay_job again.
+    try {
+      await db`
+        update jobs set chain_tx = ${result.txHash}
+        where id = ${id} and status = 'payment_pending'
+      `;
+    } catch {
+      // The atomic finalizer below also stores the hash. Continuing here closes
+      // the one-statement failure window without issuing another chain call.
+    }
+
+    try {
+      const verified = await verifyOperatorOutcome(result.outcome, result.txHash, expectation);
+      const finalized = await finalizeJobPayment(reserved, result.txHash, verified.events);
+      return { job: finalized.job, txHash: result.txHash, balance: finalized.balance };
+    } catch (error) {
+      await db`
+        update jobs
+        set status = 'payment_failed', chain_tx = ${result.txHash}, last_error = ${safeErrorMessage(error)}
+        where id = ${id} and status = 'payment_pending'
+      `;
+      fail("job payment could not be finalized", 502);
+    }
+  });
+
+  app.post("/jobs/:id/retry-payment", async (request) => {
+    const { id } = request.params as { id: string };
+    const [job] = await db`select * from jobs where id = ${id}`;
+    if (!job) fail("job not found", 404);
+    if (job.status === "paid") return { job, reconciled: true, alreadyPaid: true };
+    if (!["payment_failed", "payment_pending"].includes(String(job.status))) {
+      fail("job is not awaiting payment reconciliation", 409);
+    }
+
+    const { reference, expectation } = jobPaymentExpectation(job);
+    const [ledgerEvent] = await db`
+      select tx_hash from transactions
+      where reference = ${reference} and event_name = 'job_reward'
+      order by seq desc limit 1
     `;
-    return { job: updated, txHash, balance };
+    const txHash = (job.chain_tx as string | null) ?? (ledgerEvent?.tx_hash as string | null) ?? null;
+
+    if (txHash) {
+      try {
+        const verified = await verifyExpectedFunctionCall(txHash, expectation);
+        const finalized = await finalizeJobPayment(job, txHash, verified.events);
+        return { job: finalized.job, reconciled: true };
+      } catch (error) {
+        await db`
+          update jobs set last_error = ${safeErrorMessage(error)}
+          where id = ${id} and status = 'payment_failed'
+        `;
+        fail("job payment reconciliation could not verify the chain event", 502);
+      }
+    }
+
+    const processed = await viewContract<boolean>("is_reference_processed", { reference });
+    if (processed) {
+      await db`
+        update jobs
+        set last_error = ${"reference processed but transaction outcome is unavailable"}
+        where id = ${id} and status = 'payment_failed'
+      `;
+      fail("reference is processed but the transaction outcome is unavailable", 409);
+    }
+
+    if (job.status === "payment_pending") {
+      await db`
+        update jobs
+        set last_error = ${"payment outcome is still unresolved"}
+        where id = ${id} and status = 'payment_pending'
+      `;
+      fail("job payment outcome is still unresolved", 409);
+    }
+
+    const [reset] = await db`
+      update jobs
+      set status = 'verified', last_error = null,
+          payment_reference = coalesce(payment_reference, ${jobPaymentReference(id)})
+      where id = ${id} and status = 'payment_failed'
+      returning *
+    `;
+    return { job: reset, retryAllowed: true };
   });
 
   app.get("/quizzes", async () => {
-    return sql`
+    return db`
       select q.id, q.title, q.reward_pool, q.entry_fee, q.status,
              (select count(*)::int from quiz_questions qq where qq.quiz_id = q.id) as questions
       from quizzes q order by q.id
@@ -186,28 +438,22 @@ export function registerRoutes(app: FastifyInstance): void {
   app.post("/quizzes/:id/start", async (request) => {
     const { id } = request.params as { id: string };
     const accountId = text((request.body as Record<string, unknown>).accountId, "accountId");
-    const [quiz] = await sql`select * from quizzes where id = ${id} and status = 'live'`;
-    if (!quiz) fail("quiz is not live", 404);
-    const questions = await sql<{ id: string; question: string; options: string[]; category: string }[]>`
-      select id, question, options, category from quiz_questions
-      where quiz_id = ${id} order by random()
-    `;
-    if (questions.length === 0) fail("quiz has no questions", 409);
-    const attemptId = randomUUID();
-    await sql`
-      insert into quiz_attempts (id, quiz_id, player_account, total)
-      values (${attemptId}, ${id}, ${accountId}, ${questions.length})
-    `;
-    return {
-      attemptId,
-      quizId: id,
-      questions: questions.map((q) => ({
-        id: q.id,
-        question: q.question,
-        options: q.options,
-        category: q.category,
-      })),
-    };
+    try {
+      const { attemptId, questions } = await startQuizAttempt(db, { quizId: id, accountId });
+      return {
+        attemptId,
+        quizId: id,
+        questions: questions.map((question) => ({
+          id: question.question_id,
+          question: question.question,
+          options: question.options,
+          category: question.category,
+        })),
+      };
+    } catch (error) {
+      if (error instanceof QuizError) fail(error.message, error.statusCode);
+      throw error;
+    }
   });
 
   app.post("/quizzes/:id/submit", async (request) => {
@@ -217,54 +463,122 @@ export function registerRoutes(app: FastifyInstance): void {
     const attemptId = text(body.attemptId, "attemptId");
     const answers = (body.answers ?? {}) as Record<string, number>;
 
-    const [attempt] = await sql`
+    const [attempt] = await db`
       select * from quiz_attempts
       where id = ${attemptId} and quiz_id = ${id} and player_account = ${accountId}
     `;
     if (!attempt) fail("attempt not found", 404);
-    if (attempt.completed_at) {
+    if (["submitted", "rewarded", "failed", "reward_pending"].includes(attempt.status as string)) {
+      return attemptResult(attempt, true);
+    }
+    if (attempt.status === "expired") fail("quiz attempt expired", 410);
+    if (attemptExpired(attempt.expires_at)) {
+      await db`update quiz_attempts set status = 'expired' where id = ${attemptId} and status = 'started'`;
+      fail("quiz attempt expired", 410);
+    }
+
+    const questions: SnapshotQuestion[] = await snapshotQuestions(db, attemptId);
+    const { score } = scoreSnapshot(questions, answers);
+    const rewardAmount = Number(attempt.reward_amount);
+    const rewardCandidate = score >= Number(attempt.pass_score) && rewardAmount > 0;
+    const rewardDay = rewardDayOf(attempt.reward_day);
+
+    let won = false;
+    let ownsReward = false;
+    await db.begin(async (transaction) => {
+      const [updated] = await transaction`
+        update quiz_attempts
+        set score = ${score}, total = ${questions.length}, submitted_at = now(),
+            status = ${rewardCandidate ? "reward_pending" : "submitted"}
+        where id = ${attemptId} and status = 'started'
+        returning id
+      `;
+      if (!updated) return;
+      won = true;
+      if (!rewardCandidate) return;
+      const reservation = await reserveQuizReward(transaction, {
+        playerAccount: accountId,
+        rewardDay,
+        attemptId,
+      });
+      if (reservation.ownedByAttempt) {
+        ownsReward = true;
+      } else {
+        await transaction`
+          update quiz_attempts set status = 'submitted', reward_amount = 0 where id = ${attemptId}
+        `;
+      }
+    });
+
+    if (!won) {
+      const [current] = await db`select * from quiz_attempts where id = ${attemptId}`;
+      return attemptResult(current, true);
+    }
+    if (!ownsReward) {
       return {
-        score: attempt.score,
-        total: attempt.total,
-        reward: Number(attempt.reward_paid),
-        txHash: attempt.reward_tx,
-        alreadySubmitted: true,
+        score,
+        total: questions.length,
+        reward: 0,
+        txHash: null,
+        alreadySubmitted: false,
+        status: "submitted",
       };
     }
-    const elapsed = Date.now() - new Date(attempt.started_at as string).getTime();
-    if (elapsed > QUIZ_WINDOW_MS) fail("quiz attempt expired", 410);
 
-    const questions = await sql<{ id: string; correct_index: number }[]>`
-      select id, correct_index from quiz_questions where quiz_id = ${id}
-    `;
-    let score = 0;
-    for (const question of questions) {
-      if (answers[question.id] === question.correct_index) score += 1;
+    const wallet = playerWallet(accountId);
+    const previous = await getMirroredBalance(wallet);
+    try {
+      const result = await creditReward(wallet, rewardAmount, `quiz:${attemptId}`);
+      // Persist the hash immediately; local finalization may fail afterward.
+      await db`update quiz_attempts set reward_tx = ${result.txHash} where id = ${attemptId}`;
+      const verified = await verifyOperatorOutcome(result.outcome, result.txHash, {
+        signerId: config.operatorAccount,
+        method: "credit_reward",
+        args: { wallet, amount: String(rewardAmount), reference: `quiz:${attemptId}` },
+        events: [
+          {
+            name: "reward_issued",
+            entityId: wallet,
+            walletFrom: null,
+            walletTo: wallet,
+            amount: String(rewardAmount),
+            reference: `quiz:${attemptId}`,
+          },
+        ],
+      });
+      const balance = await readChainBalance(wallet, previous + rewardAmount);
+      await db.begin(async (transaction) => {
+        await setMirroredBalance(transaction, wallet, balance);
+        await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
+        await transaction`
+          update quiz_reward_claims set status = 'paid', paid_at = now()
+          where attempt_id = ${attemptId}
+        `;
+        await transaction`
+          update quiz_attempts
+          set status = 'rewarded', reward_paid = ${rewardAmount}, reward_tx = ${result.txHash},
+              rewarded_at = now(), last_error = null
+          where id = ${attemptId}
+        `;
+      });
+      return {
+        score,
+        total: questions.length,
+        reward: rewardAmount,
+        txHash: result.txHash,
+        alreadySubmitted: false,
+        status: "rewarded",
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 300) : "reward payment failed";
+      await db.begin(async (transaction) => {
+        await transaction`update quiz_reward_claims set status = 'failed' where attempt_id = ${attemptId}`;
+        await transaction`
+          update quiz_attempts set status = 'failed', last_error = ${message} where id = ${attemptId}
+        `;
+      });
+      fail("quiz reward payment failed", 502);
     }
-
-    const [alreadyPaid] = await sql`
-      select 1 from quiz_attempts
-      where player_account = ${accountId} and reward_paid > 0 and completed_at::date = current_date
-      limit 1
-    `;
-    const reward = score >= QUIZ_PASS_MARK && !alreadyPaid ? QUIZ_REWARD : 0;
-
-    let rewardTx: string | null = null;
-    if (reward > 0) {
-      const wallet = playerWallet(accountId);
-      const previous = await getMirroredBalance(wallet);
-      rewardTx = await creditReward(wallet, reward, `quiz:${attemptId}`);
-      await refreshWallet(wallet, previous + reward);
-      await recordTx(rewardTx, "system:mint", playerWallet(accountId), reward, "quiz_reward", attemptId);
-    }
-
-    await sql`
-      update quiz_attempts
-      set score = ${score}, total = ${questions.length}, reward_paid = ${reward},
-          reward_tx = ${rewardTx}, completed_at = now()
-      where id = ${attemptId}
-    `;
-    return { score, total: questions.length, reward, txHash: rewardTx, alreadySubmitted: false };
   });
 
   app.post("/properties/:id/buy", async (request) => {
@@ -274,19 +588,21 @@ export function registerRoutes(app: FastifyInstance): void {
     const txHash = text(body.txHash, "txHash");
     if (!Number.isFinite(propertyId)) fail("invalid property id");
 
-    const outcome = await assertTxSucceeded(txHash, accountId);
+    const verified = await verifyExpectedFunctionCall(txHash, {
+      signerId: accountId,
+      method: "buy_property",
+      args: { property_id: propertyId },
+      events: [{ name: "property_transferred", entityId: `property:${propertyId}` }],
+    });
     const property = await viewContract<ChainProperty | null>("get_property", { property_id: propertyId });
     if (!property) fail("property not found", 404);
     if (property.owner !== playerWallet(accountId)) fail("chain ownership not confirmed", 409);
 
-    const events = parseEvents(outcome);
     const buyer = playerWallet(accountId);
     let seller: string;
     let price: number;
     try {
-      // Canonical events take priority; the legacy parser only covers
-      // pre-Phase-1 receipts and is removed after the compatibility window.
-      const receipt = propertySaleFromReceipts(events, buyer, propertyId, property.transfer_count);
+      const receipt = propertySaleFromReceipts(verified.events, buyer, propertyId, property.transfer_count);
       if (!receipt) fail("property sale receipt is missing", 409);
       seller = receipt.seller;
       price = receipt.price;
@@ -295,21 +611,25 @@ export function registerRoutes(app: FastifyInstance): void {
       throw error;
     }
 
-    await sql`
-      insert into properties (id, district, x, y, owner_wallet, property_type, price, for_sale, transfer_count, updated_at)
-      values (${property.id}, ${property.district}, ${property.x}, ${property.y}, ${property.owner},
-              ${property.kind}, ${property.price}, ${property.for_sale}, ${property.transfer_count}, now())
-      on conflict (id) do update set
-        owner_wallet = excluded.owner_wallet,
-        property_type = excluded.property_type,
-        price = excluded.price,
-        for_sale = excluded.for_sale,
-        transfer_count = excluded.transfer_count,
-        updated_at = now()
-    `;
-    await recordTx(txHash, buyer, seller, price, "property_sale", String(propertyId));
-    await refreshWallet(buyer);
-    await refreshWallet(seller);
+    const buyerBalance = await readChainBalance(buyer);
+    const sellerBalance = await readChainBalance(seller);
+    await db.begin(async (transaction) => {
+      await transaction`
+        insert into properties (id, district, x, y, owner_wallet, property_type, price, for_sale, transfer_count, updated_at)
+        values (${property.id}, ${property.district}, ${property.x}, ${property.y}, ${property.owner},
+                ${property.kind}, ${property.price}, ${property.for_sale}, ${property.transfer_count}, now())
+        on conflict (id) do update set
+          owner_wallet = excluded.owner_wallet,
+          property_type = excluded.property_type,
+          price = excluded.price,
+          for_sale = excluded.for_sale,
+          transfer_count = excluded.transfer_count,
+          updated_at = now()
+      `;
+      await setMirroredBalance(transaction, buyer, buyerBalance);
+      await setMirroredBalance(transaction, seller, sellerBalance);
+      await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
+    });
     return { property, seller, price };
   });
 
@@ -317,33 +637,42 @@ export function registerRoutes(app: FastifyInstance): void {
     const body = request.body as Record<string, unknown>;
     const accountId = text(body.accountId, "accountId");
     const propertyId = positive(body.propertyId, "propertyId");
-    text(body.name, "name");
+    const name = text(body.name, "name");
     const txHash = text(body.txHash, "txHash");
 
-    await assertTxSucceeded(txHash, accountId);
+    const verified = await verifyExpectedFunctionCall(txHash, {
+      signerId: accountId,
+      method: "create_business",
+      args: { property_id: propertyId, name },
+      events: [{ name: "permit_burn" }, { name: "business_created" }],
+    });
     const businesses = await viewAllBusinesses();
     const business = businesses.find((b) => b.owner === accountId && Number(b.property_id) === propertyId);
     if (!business) fail("business creation not confirmed on chain", 409);
+    requireExpectedEvent(verified.events, { name: "permit_burn", entityId: `business:${business.id}` });
+    requireExpectedEvent(verified.events, {
+      name: "business_created",
+      entityId: `business:${business.id}`,
+    });
 
-    await sql`
-      insert into businesses (id, name, owner_account, property_id, treasury_wallet, revenue_total)
-      values (${business.id}, ${business.name}, ${business.owner}, ${business.property_id},
-              ${business.treasury}, ${business.revenue_total})
-      on conflict (id) do update set
-        name = excluded.name,
-        owner_account = excluded.owner_account,
-        treasury_wallet = excluded.treasury_wallet,
-        revenue_total = excluded.revenue_total
-    `;
-    await refreshWallet(business.treasury);
-    await recordTx(
-      txHash,
-      playerWallet(accountId),
-      "system:burn",
-      100,
-      "business_permit",
-      String(business.id),
-    );
+    const ownerWallet = playerWallet(accountId);
+    const ownerBalance = await readChainBalance(ownerWallet);
+    const treasuryBalance = await readChainBalance(business.treasury);
+    await db.begin(async (transaction) => {
+      await transaction`
+        insert into businesses (id, name, owner_account, property_id, treasury_wallet, revenue_total)
+        values (${business.id}, ${business.name}, ${business.owner}, ${business.property_id},
+                ${business.treasury}, ${business.revenue_total})
+        on conflict (id) do update set
+          name = excluded.name,
+          owner_account = excluded.owner_account,
+          treasury_wallet = excluded.treasury_wallet,
+          revenue_total = excluded.revenue_total
+      `;
+      await setMirroredBalance(transaction, ownerWallet, ownerBalance);
+      await setMirroredBalance(transaction, business.treasury, treasuryBalance);
+      await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
+    });
     return business;
   });
 
@@ -354,46 +683,36 @@ export function registerRoutes(app: FastifyInstance): void {
     const amount = positive(body.amount, "amount");
     const txHash = text(body.txHash, "txHash");
 
-    const outcome = await assertTxSucceeded(txHash, accountId);
+    const verified = await verifyExpectedFunctionCall(txHash, {
+      signerId: accountId,
+      method: "pay_service",
+      args: { business_id: businessId, amount: String(amount) },
+      events: [{ name: "service_paid", entityId: `business:${businessId}` }],
+    });
     const businesses = await viewAllBusinesses();
     const business = businesses.find((b) => Number(b.id) === businessId);
     if (!business) fail("business not found on chain", 404);
 
-    const events = parseEvents(outcome);
     const payer = playerWallet(accountId);
     let receipt: { amount: number } | null;
     try {
-      receipt = servicePaymentReceipt(events, payer, business.treasury, businessId);
+      receipt = servicePaymentReceipt(verified.events, payer, business.treasury, businessId);
     } catch (error) {
       if (error instanceof ReceiptError) fail(error.message, 409);
       throw error;
     }
-    let actualAmount: number;
-    if (receipt) {
-      actualAmount = receipt.amount;
-    } else {
-      // Legacy transfer events only cover pre-Phase-1 receipts. Remove once they age out (Phase 2).
-      const legacyPayment = events
-        .filter((event) => event.event === "transfer")
-        .flatMap((event) => event.data)
-        .find((entry) => entry.kind === "service_payment" && entry.from === payer);
-      if (!legacyPayment) fail("service payment receipt is missing", 409);
-      actualAmount = Number(legacyPayment.amount);
-    }
-    if (actualAmount !== amount) fail("request amount does not match the receipt", 409);
+    if (!receipt) fail("service payment receipt is missing", 409);
+    if (receipt.amount !== amount) fail("request amount does not match the receipt", 409);
 
-    await sql`update businesses set revenue_total = ${business.revenue_total} where id = ${businessId}`;
-    const previous = await getMirroredBalance(business.treasury);
-    await refreshWallet(business.treasury, previous + actualAmount);
-    await recordTx(
-      txHash,
-      playerWallet(accountId),
-      business.treasury,
-      actualAmount,
-      "service_payment",
-      String(businessId),
-    );
-    return { business, amount: actualAmount };
+    const payerBalance = await readChainBalance(payer);
+    const treasuryBalance = await readChainBalance(business.treasury);
+    await db.begin(async (transaction) => {
+      await transaction`update businesses set revenue_total = ${business.revenue_total} where id = ${businessId}`;
+      await setMirroredBalance(transaction, payer, payerBalance);
+      await setMirroredBalance(transaction, business.treasury, treasuryBalance);
+      await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
+    });
+    return { business, amount: receipt.amount };
   });
 
   app.post("/businesses/:id/transfer", async (request) => {
@@ -403,21 +722,21 @@ export function registerRoutes(app: FastifyInstance): void {
     const newOwner = text(body.newOwner, "newOwner");
     const txHash = text(body.txHash, "txHash");
 
-    await assertTxSucceeded(txHash, accountId);
+    const verified = await verifyExpectedFunctionCall(txHash, {
+      signerId: accountId,
+      method: "transfer_business",
+      args: { business_id: businessId, new_owner: newOwner },
+      events: [{ name: "business_transferred", entityId: `business:${businessId}` }],
+    });
     const businesses = await viewAllBusinesses();
     const business = businesses.find((b) => Number(b.id) === businessId);
     if (!business) fail("business not found on chain", 404);
     if (business.owner !== newOwner) fail("chain transfer not confirmed", 409);
 
-    await sql`update businesses set owner_account = ${newOwner} where id = ${businessId}`;
-    await recordTx(
-      txHash,
-      playerWallet(accountId),
-      playerWallet(newOwner),
-      0,
-      "business_transfer",
-      String(businessId),
-    );
+    await db.begin(async (transaction) => {
+      await transaction`update businesses set owner_account = ${newOwner} where id = ${businessId}`;
+      await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
+    });
     return { business };
   });
 }

@@ -138,6 +138,16 @@ export function App() {
   function completeJob(job: Job) {
     if (!me) return;
     void run(async () => {
+      let current = job;
+      if (current.status === "accepted") {
+        current = await api.submitJob(job.id, me, "Delivered through the demo client");
+      }
+      if (current.status === "submitted") {
+        current = await api.verifyJob(job.id, "Verified in the demo");
+      }
+      if (current.status === "payment_failed") {
+        await api.retryJobPayment(job.id);
+      }
       const result = await api.completeJob(job.id, me);
       return result.txHash;
     }, `Job paid: ${job.payment} QC`);

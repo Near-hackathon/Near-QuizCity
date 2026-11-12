@@ -20,8 +20,11 @@ export function registerDataRoutes(app: FastifyInstance, cfg: AppConfig): void {
   });
 
   app.get("/transactions", async () => {
-    return sql`select seq, tx_hash, wallet_from, wallet_to, amount, kind, reference, created_at
-               from transactions order by seq desc limit 50`;
+    return sql`select seq, network_id, contract_id, tx_hash, receipt_id, event_index,
+                       event_name, event_version, kind, wallet_from, wallet_to, amount,
+                       reference, entity_type, entity_id, block_height, block_hash,
+                       chain_timestamp, payload, observed_at, created_at
+                from transactions order by seq desc limit 50`;
   });
 
   app.get("/properties", async () => {

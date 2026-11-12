@@ -16,6 +16,7 @@
     "build": "npm run contract:build && npm run typecheck --workspace=server && npm run build --workspace=web",
     "verify": "npm run toolchain:check && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build && npm run contract:abi:check",
     "db:push": "npm run db:push --workspace=server",
+    "db:test": "npm run db:test --workspace=server",
     "db:reset": "npm run db:reset --workspace=server",
     "chain:seed": "npm run contract:build:demo && npm run contract:abi:check:demo && npm run chain:seed --workspace=server",
     "db:seed": "npm run db:seed --workspace=server",

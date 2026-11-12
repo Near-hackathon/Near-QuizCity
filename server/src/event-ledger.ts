@@ -6,6 +6,15 @@ export type ChainEvent = {
   version?: string;
   event: string;
   data: Record<string, unknown>[];
+  /** Receipt/event identity and block context, attached by parseEvents. */
+  receiptId?: string;
+  eventIndex?: number;
+  blockHeight?: number;
+  blockHash?: string;
+  txHash?: string;
+  chainTimestamp?: string;
+  /** Untouched canonical log, stored in the ledger for replay/reconciliation. */
+  payload?: unknown;
 };
 
 export class ReceiptError extends Error {
