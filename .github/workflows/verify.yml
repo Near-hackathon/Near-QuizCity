@@ -1,0 +1,62 @@
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+
+      - name: Secret scan
+        run: |
+          if git grep -nE 'ed25519:[1-9A-HJ-NP-Za-km-z]{80,}|NEAR_OPERATOR_PRIVATE_KEY=ed25519:[1-9A-HJ-NP-Za-km-z]{40,}' -- . ':!*.example'; then
+            echo "possible secret material found in tracked files" >&2
+            exit 1
+          fi
+
+      - name: Install cargo-near
+        run: cargo install cargo-near --version 0.23.0 --locked
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify
+        run: npm run verify
+
+      - name: Record WASM checksum
+        run: |
+          sha256sum contract/target/near/quizcity.wasm | tee wasm.sha256
+          echo "### WASM checksum" >> "$GITHUB_STEP_SUMMARY"
+          cat wasm.sha256 >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quizcity-wasm
+          path: |
+            contract/target/near/quizcity.wasm
+            wasm.sha256
+          if-no-files-found: error

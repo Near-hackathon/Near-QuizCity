@@ -1,0 +1,15 @@
+node_modules
+dist
+contract/target
+package-lock.json
+server/demo-accounts.json
+server/.env
+.env
+.DS_Store
+TECHNICAL_WORKFLOW.md
+*.pdf
+
+server/backups
+*.bak.*
+*.wasm
+*.pdf
