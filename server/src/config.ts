@@ -242,7 +242,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     operatorAccount,
     operatorPrivateKey: privateKey(env, "NEAR_OPERATOR_PRIVATE_KEY"),
     npcTickMs: integer(env, "NPC_TICK_MS", 30_000, 1_000, 3_600_000),
-    e2eApi: url(env, "E2E_API", "http://localhost:8787").toString(),
+    e2eApi: url(env, "E2E_API", "http://localhost:8787").toString().replace(/\/+$/, ""),
   };
 
   assertDemoConfigurationIsSafe(config);

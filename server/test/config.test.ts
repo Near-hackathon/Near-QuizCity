@@ -149,6 +149,7 @@ test("ports, tick intervals, URLs, and keys are validated", () => {
   assert.throws(() => loadConfig(env({ WEB_ORIGIN: "not-a-url" })), /must be a valid URL/);
   assert.throws(() => loadConfig(env({ NEAR_OPERATOR_PRIVATE_KEY: "secret" })), /private key/);
   assert.throws(() => loadConfig(env({ E2E_API: "ftp://localhost:8787" })), /must use https/);
+  assert.equal(loadConfig(env({ E2E_API: "http://localhost:8787/" })).e2eApi, "http://localhost:8787");
 });
 
 test("operator credentials are required", () => {

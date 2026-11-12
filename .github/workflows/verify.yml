@@ -48,15 +48,21 @@ jobs:
 
       - name: Record WASM checksum
         run: |
-          sha256sum contract/target/near/quizcity.wasm | tee wasm.sha256
+          sha256sum contract/target/near/quizcity-production.wasm | tee wasm.sha256
           echo "### WASM checksum" >> "$GITHUB_STEP_SUMMARY"
           cat wasm.sha256 >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify demo artifact
+        run: |
+          npm run contract:build:demo
+          npm run contract:abi:check:demo
 
       - name: Upload WASM artifact
         uses: actions/upload-artifact@v4
         with:
           name: quizcity-wasm
           path: |
-            contract/target/near/quizcity.wasm
+            contract/target/near/quizcity-production.wasm
+            contract/target/near/quizcity-demo.wasm
             wasm.sha256
           if-no-files-found: error

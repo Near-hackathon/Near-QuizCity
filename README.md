@@ -17,7 +17,7 @@ Built for the NEAR "Games With Real Economies" hackathon.
 5. **Own** — buy a plot. The contract moves QC and title atomically; a plot cannot have two owners.
 6. **Trade** — open a venue (100 QC permit, burned), sell tickets, transfer the business to another player.
 
-Running totals (`total_issued`, `total_burned`, `tx_count`) are on chain, so the economy is auditable rather than asserted.
+Running totals (`total_issued`, `total_burned`, `tx_count`) are on chain, so the economy is auditable rather than asserted. `tx_count` counts ledger movements (mint, burn, transfer); registry events have their own monotonic `seq` in the canonical event log.
 
 ## Architecture
 
@@ -38,7 +38,7 @@ The server never trusts a client claim. Each write endpoint takes a `txHash`, fe
 
 ### Why NPCs cannot print money
 
-`pay_job` is operator-only and moves QC from the NPC wallet to the worker via the same internal transfer used by players. Professor Kofi starts with 1,000 QC and pays 100 per job, so he stops hiring when his wallet runs dry. Quiz rewards are the only minted issuance, and they are per-call capped.
+`pay_job` is operator-only and moves QC from the NPC wallet to the worker via the same internal transfer used by players. Professor Kofi starts with 1,000 QC and pays 100 per job, so he stops hiring when his wallet runs dry. Quiz rewards are the only minted issuance, and they are per-call capped. Both `pay_job` and `credit_reward` require a unique reference, so a retried HTTP request cannot pay twice.
 
 ## Repo layout
 
@@ -66,13 +66,15 @@ createdb quizcity
 npm run db:push
 
 # 2. Contract checks (only needed if you change the contract)
-npm run contract:test                     # 13 unit tests
+npm run contract:test                     # 44 unit tests
 npm run contract:fmt:check
-npm run contract:clippy
-npm run contract:build
+npm run contract:clippy                   # includes the demo-reset feature
+npm run contract:build                    # production WASM, no demo helpers
 
-# 3. Deploy + seed the testnet state
-npm run chain:seed                        # deploy, reset_demo, seed NPC/plot
+# 3. Deploy + seed the disposable testnet demo state
+#    Builds the demo artifact, verifies it exposes both demo helpers, then
+#    deploys, calls migrate_reset, and seeds NPC/plot.
+NEAR_DEPLOY_PRIVATE_KEY=<contract-account-full-access-key> npm run chain:seed
 
 # 4. Read model
 npm run db:reset && npm run db:seed
@@ -82,6 +84,8 @@ npm run dev                               # API :8787, web :5173
 ```
 
 `.env` keys: `APP_ENV`, `DEMO_MODE`, `DATABASE_URL`, `PGSSL`, `PORT`, `HOST`, `WEB_ORIGIN`, `NEAR_NETWORK`, `NEAR_RPC_URL`, `NEAR_CONTRACT_ID`, `NEAR_OPERATOR_ACCOUNT`, `NEAR_OPERATOR_PRIVATE_KEY`, `NPC_TICK_MS`, `E2E_API`. Configuration is validated once at startup; invalid or missing values stop the process with an actionable message and a redacted summary is logged. Tests import the pure validator and need no `.env`.
+
+`NEAR_OPERATOR_PRIVATE_KEY` is a payout-only function-call key for `credit_reward` and `pay_job`. `NEAR_DEPLOY_PRIVATE_KEY` is the contract account's offline full-access deploy/recovery key and is required only for `npm run chain:seed`; pass it in the shell and never store it in `server/.env`.
 
 Use `https://rpc.testnet.fastnear.com`; the public `rpc.testnet.near.org` endpoint is rate-limited and returns 429s.
 
@@ -97,24 +101,28 @@ Use `https://rpc.testnet.fastnear.com`; the public `rpc.testnet.near.org` endpoi
 
 ## Contract API
 
-| Method                                                                      | Who             | Effect                                  |
-| --------------------------------------------------------------------------- | --------------- | --------------------------------------- |
-| `register_player(username)`                                                 | anyone          | Creates `player:<account>` with 0 QC    |
-| `claim_starter()`                                                           | player          | One-time 500 QC, tracked on chain       |
-| `transfer_qc(to_wallet, amount)`                                            | wallet owner    | Internal transfer, positive amount only |
-| `credit_reward(wallet, amount, reference)`                                  | operator        | Mints capped at 1,000 per call          |
-| `pay_job(employer, employee, amount, reference)`                            | operator        | Moves QC from NPC/business budget       |
-| `create_property(district, x, y, price)`                                    | operator/seeder | Mints a titled plot                     |
-| `list_property(id, price)`                                                  | owner           | Lists a plot for sale                   |
-| `buy_property(id)`                                                          | any player      | Atomic QC + title swap; no self-buy     |
-| `create_business(property_id, name)`                                        | plot owner      | 100 QC permit, burned                   |
-| `pay_service(business_id, amount)`                                          | customer        | Pays the business treasury              |
-| `business_withdraw(id, amount)`                                             | owner           | Owner-only treasury withdrawal          |
-| `transfer_business(id, new_owner)`                                          | owner           | Moves the venue and its treasury        |
-| `reset_demo()`                                                              | operator        | Testnet-only state wipe                 |
-| `get_balance / get_player / get_property(s) / get_business(es) / get_stats` | anyone          | Views                                   |
+| Method                                                                    | Who                         | Effect                                                 |
+| ------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------ |
+| `register_player(username)`                                               | anyone                      | Creates `player:<account>` with 0 QC                   |
+| `claim_starter()`                                                         | player                      | One-time 500 QC, tracked on chain                      |
+| `transfer_qc(to_wallet, amount)`                                          | wallet owner                | Internal transfer, positive amount only                |
+| `credit_reward(wallet, amount, reference)`                                | operator                    | Mints capped at 1,000 per call; idempotent             |
+| `pay_job(employer, employee, amount, reference)`                          | operator                    | Moves NPC/business QC; idempotent                      |
+| `create_wallet(wallet, initial_balance)`                                  | operator                    | Creates `player:`, `npc:`, `gov:`, `biz:` wallets      |
+| `create_property(kind, district, x, y, owner_wallet, price)`              | operator/seeder             | Creates a titled plot; coordinates unique              |
+| `list_property(id, price)` / `cancel_property_listing(id)`                | owner/operator              | Lists or cancels a sale                                |
+| `buy_property(id)`                                                        | any player                  | Atomic QC + title swap; no self-buy                    |
+| `create_business(property_id, name)`                                      | plot owner                  | 100 QC permit, burned; one per property                |
+| `pay_service(business_id, amount)`                                        | customer                    | Pays the business treasury                             |
+| `business_withdraw(id, amount)`                                           | owner                       | Owner-only treasury withdrawal                         |
+| `transfer_business(id, new_owner)`                                        | owner                       | Moves the operating company only                       |
+| `set_paused(paused)` / `propose_operator` / `accept_operator`             | operator                    | Pause payouts; two-step operator rotation              |
+| `is_reference_processed(reference)`                                       | anyone                      | Payout reconciliation view                             |
+| `reset_demo` / `migrate_reset`                                            | operator / contract account | Demo-reset build only; `migrate_reset` is `#[private]` |
+| `get_balance / get_player / get_property / get_business / get_stats`      | anyone                      | Single-entity views                                    |
+| `get_properties(from_index, limit)` / `get_businesses(from_index, limit)` | anyone                      | Pages of up to 100 items                               |
 
-State-changing methods emit NEP-297-style `EVENT_JSON` logs (`transfer`, `job_reward`, `service_paid`), which the server uses as the source of truth for amounts and parties.
+State-changing methods emit canonical NEP-297-style `EVENT_JSON` logs. Each ledger movement has one event with `seq`, `wallet_from`, `wallet_to`, `amount`, `reference`, and `entity_id`; see [`docs/contract-events.md`](./docs/contract-events.md). The server reads those events for amounts and parties instead of trusting the request body.
 
 ## Server API
 
@@ -132,17 +140,22 @@ npm run e2e                                # full player loop against testnet
 npm run exploit                            # 13 adversarial checks (mutates demo state)
 ```
 
-`e2e` drives register → claim → job → quiz → property → business → transfer and asserts exact balances. `exploit` mutates demo state, so run `npm run chain:seed && npm run db:reset && npm run db:seed` afterwards. It covers forged hashes, cross-account transaction use, SQL injection in paths, answer leakage, quiz replay, non-employee job completion, request-tampered payment amounts, demo-key leakage, and ledger duplication.
+`npm run verify` runs the production contract tests (49), demo-reset contract tests (52), 57 server tests, the toolchain and WASM-export checker tests, formatting/linting/typechecks, both builds, and a production-WASM check that reads real function exports and rejects demo helpers.
+
+`e2e` drives register → claim → job → quiz → property → business → transfer and asserts exact balances. `exploit` mutates demo state, so reset afterwards (below). It covers forged hashes, cross-account transaction use, SQL injection in paths, answer leakage, quiz replay, non-employee job completion, request-tampered payment amounts, demo-key leakage, and ledger duplication.
 
 Expected end state: Alice 225 QC, Bob 480 QC, Kofi 1,200 QC (900 after the job + 300 property sale), venue treasury 20 QC, council 0.
 
 ## Reset
 
 ```bash
-npm run chain:seed    # reset_demo + reseed NPC wallet and plot
-npm run db:reset      # drop/apply schema
-npm run db:seed       # quiz, job, NPC rows
+npm run contract:build:demo   # demo build includes migrate_reset
+NEAR_DEPLOY_PRIVATE_KEY=<contract-account-full-access-key> npm run chain:seed
+npm run db:reset              # drop/apply schema
+npm run db:seed               # quiz, job, NPC rows
 ```
+
+The root `chain:seed` script rebuilds the demo artifact, runs the demo ABI check, prints its SHA-256, and refuses to deploy a WASM that lacks `migrate_reset`/`reset_demo`. `migrate_reset` is `#[private]`: only the contract account can call it, and the migrated operator is the contract account. The demo build is disposable. `migrate_reset` writes fresh collection prefixes, so prior demo entries are orphaned rather than migrated. Production builds omit `reset_demo` and `migrate_reset`; the verify step asserts this against the WASM.
 
 ## Demo mode and key rotation
 
@@ -154,22 +167,32 @@ Demo sign-in is opt-in and local-demo-only. `DEMO_MODE=1` is accepted only when 
 
 With the flag absent or `0`, `GET /demo/accounts` returns 404, the web client renders a read-only notice, and no account picker is mounted. The route also refuses to load keys unless the full configuration is safe (503 on an impossible unsafe override), filtering the operator account, the contract account, and any entry whose secret matches the operator key. Startup fails if the operator account or key is missing. Real wallet sign-in is intentionally not implemented yet (QC-0502), so non-demo deployments are read-only.
 
-Demo credentials are disposable testnet keys stored in `localStorage`. Rotation is dry-run by default:
+Demo player keys are disposable testnet keys stored in `localStorage`. Rotation is player-only and dry-run by default:
 
 ```bash
-npm run keys:rotate:dry-run   # lists account IDs and current public keys, changes nothing
-npm run keys:rotate           # requires --confirm-testnet-rotation under the hood
+npm run demo-keys:rotate:dry-run   # lists demo player account IDs and current public keys, changes nothing
+npm run demo-keys:rotate           # requires --confirm-demo-key-rotation under the hood
 ```
 
-The confirmed run requires `APP_ENV=local|test`, testnet, and `DEMO_MODE=1`. It writes timestamped backups of `.env` and `demo-accounts.json` to `server/backups/<timestamp>/` (mode 0600, Git-ignored), adds the new key, confirms it on-chain, persists it, and only then deletes the old key. It removes operator entries by account ID, not by JSON key name. If any step fails it stops immediately and prints the backup path, account IDs, and public keys only. Restore from the backup if the new secret was not persisted. Do not print or commit private keys.
+The confirmed run requires `APP_ENV=local|test`, testnet, and `DEMO_MODE=1`. It backs up only `demo-accounts.json` to `server/backups/<timestamp>/` (mode 0600, Git-ignored), adds the new demo player key, confirms it on-chain, persists it, and only then deletes the old key. It never reads or writes `.env` or the operator payout key, and it removes operator/contract entries from the demo file by account ID. If any step fails it stops immediately and prints the backup path, account IDs, and public keys only. Restore `demo-accounts.json` from the backup if the new secret was not persisted. Do not print or commit private keys.
+
+Player demo-key rotation is separate from the server payout key. A restricted `NEAR_OPERATOR_PRIVATE_KEY` cannot safely add its own replacement, so rotating it requires the offline deployment/recovery key and an administrator:
+
+```bash
+npm run payout-key:verify -- --public-key ed25519:<new-key>
+```
+
+`payout-key:verify` is read-only. It accepts a public key only, queries `view_access_key`, and fails when the key is `FullAccess`, targets another receiver, allows extra methods, or has no finite allowance. It never accepts or prints a private key. The rotation flow is: create a new function-call key for `credit_reward,pay_job` with an allowance, verify it with `payout-key:verify`, add it as `NEAR_OPERATOR_PRIVATE_KEY`, run one payout, then delete the old key with the offline deploy key and confirm it is gone.
 
 ## Security notes
 
-- The operator key lives only in the server environment. It is never sent to the browser and `/demo/accounts` filters it out.
+- The operator key lives only in the server environment. It is never sent to the browser and `/demo/accounts` filters it out. It must be a payout-only function-call key for `credit_reward` and `pay_job`, not a full-access key.
 - Demo sign-in uses disposable testnet keys in `localStorage`. This is a demo convenience, not a production auth pattern — production would use a wallet selector with the user's own signer (QC-0502). Non-demo deployments are read-only until then.
 - `DEMO_MODE` defaults to `0`; configuration omission cannot expose keys.
 - The Postgres mirror can be wiped and rebuilt with `POST /sync` / `npm run db:reset`; it holds no authority.
-- `reset_demo` is a testnet-only escape hatch and is operator-gated.
+- `reset_demo` is operator-gated; `migrate_reset` is `#[private]` and callable only by the contract account. Both exist only in the `demo-reset` build. Production builds do not export them.
+- Operator payouts are capped per call, total supply is capped, and `credit_reward`/`pay_job` reject reused references. The operator can pause payouts without blocking reads; rotation is two-step (`propose_operator` then `accept_operator` from the new account).
+- `npm run payout-key:verify` fails a server key that is `FullAccess`, targets another contract, allows extra methods, or has no allowance. Keep the contract account's full-access deploy/recovery key offline; only `chain:seed` needs it, via `NEAR_DEPLOY_PRIVATE_KEY` supplied in the shell.
 
 ## Repository checks
 
@@ -177,7 +200,7 @@ The confirmed run requires `APP_ENV=local|test`, testnet, and `DEMO_MODE=1`. It 
 npm run verify
 ```
 
-In order: Rust toolchain pin check; Prettier and `cargo fmt --check`; ESLint (runtime-specific globals) and `cargo clippy -D warnings`; TypeScript for server and web; 13 contract tests, 21 server tests, and the toolchain-checker tests; then the contract WASM, server typecheck, and production web build. `npm ci && npm run verify` works without `server/.env`.
+In order: Rust toolchain pin check; Prettier and `cargo fmt --check`; ESLint (runtime-specific globals) and `cargo clippy -D warnings`; TypeScript for server and web; 49 production contract tests, 52 demo-reset contract tests, 57 server tests, and the toolchain/WASM-export checker tests; then the contract WASM, server typecheck, and production web build; finally the production-WASM demo-helper check, which inspects `WebAssembly.Module.exports` rather than raw bytes. `npm ci && npm run verify` works without `server/.env`.
 
 The same command runs in `.github/workflows/verify.yml` on Node 20.20 and Rust 1.95, with the WASM checksum recorded as an artifact.
 

@@ -1,10 +1,49 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { getOperator } from "../src/operator.js";
-import { contractId } from "../src/near.js";
+import { basename } from "node:path";
+import { connect, keyStores, KeyPair } from "near-api-js";
+import { assertWasmExports } from "../../scripts/wasm-exports.mjs";
+import { config } from "../src/runtime-config.js";
+import { contractId, networkId } from "../src/near.js";
 
-const wasmPath = new URL("../../contract/target/near/quizcity.wasm", import.meta.url);
+const artifactName = "quizcity-demo.wasm";
+const wasmPath = new URL(`../../contract/target/near/${artifactName}`, import.meta.url);
+if (basename(wasmPath.pathname) !== artifactName) {
+  throw new Error(
+    `refusing to deploy ${wasmPath.pathname}: expected the named demo artifact ${artifactName}`,
+  );
+}
+
 const wasm = readFileSync(wasmPath);
-const account = await getOperator();
+try {
+  assertWasmExports(wasm, { demo: true });
+} catch (error) {
+  throw new Error(
+    `refusing to deploy ${artifactName}: ${error instanceof Error ? error.message : String(error)}. ` +
+      "Run `npm run contract:build:demo` first.",
+    { cause: error },
+  );
+}
+const sha256 = createHash("sha256").update(wasm).digest("hex");
+console.log("deploying demo artifact", wasm.length, "bytes", "sha256", sha256, "to", contractId);
+
+const deployKey = process.env.NEAR_DEPLOY_PRIVATE_KEY?.trim();
+if (!deployKey) {
+  throw new Error(
+    "NEAR_DEPLOY_PRIVATE_KEY is required for chain:seed. " +
+      "Deployment and migrate_reset need the contract account's offline full-access key; " +
+      "the server's NEAR_OPERATOR_PRIVATE_KEY is a payout-only function-call key.",
+  );
+}
+
+const keyStore = new keyStores.InMemoryKeyStore();
+await keyStore.setKey(
+  networkId,
+  contractId,
+  KeyPair.fromString(deployKey as Parameters<typeof KeyPair.fromString>[0]),
+);
+const near = await connect({ networkId, nodeUrl: config.rpcUrl, keyStore, deps: { keyStore } });
+const account = await near.account(contractId);
 
 async function call(method: string, args: Record<string, unknown>) {
   const outcome = await account.functionCall({
@@ -17,9 +56,8 @@ async function call(method: string, args: Record<string, unknown>) {
   return outcome.transaction_outcome.id;
 }
 
-console.log("deploying", wasm.length, "bytes to", contractId);
 await account.deployContract(wasm);
-await call("reset_demo", {});
+await call("migrate_reset", {});
 await call("create_wallet", { wallet: "npc:professor-kofi", initial_balance: "1000" });
 await call("create_wallet", { wallet: "gov:council", initial_balance: "0" });
 await call("create_property", {

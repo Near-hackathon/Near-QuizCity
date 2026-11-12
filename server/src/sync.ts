@@ -1,5 +1,5 @@
 import { sql } from "./db.js";
-import { viewContract, type ContractBusiness, type ContractProperty, type ContractStats } from "./near.js";
+import { viewAllBusinesses, viewAllProperties, viewContract, type ContractStats } from "./near.js";
 
 export function classify(walletId: string): { ownerType: string; ownerId: string } {
   const [prefix, ...rest] = walletId.split(":");
@@ -38,11 +38,8 @@ export async function refreshWallet(walletId: string, atLeast?: number): Promise
 }
 
 export async function syncEconomy(): Promise<{ wallets: number; properties: number; businesses: number }> {
-  const [stats, properties, businesses] = await Promise.all([
-    viewContract<ContractStats>("get_stats"),
-    viewContract<ContractProperty[]>("get_properties"),
-    viewContract<ContractBusiness[]>("get_businesses"),
-  ]);
+  const stats = await viewContract<ContractStats>("get_stats");
+  const [properties, businesses] = await Promise.all([viewAllProperties(stats), viewAllBusinesses(stats)]);
 
   const walletRows = await sql<{ wallet_id: string }[]>`
     select wallet_id from npc_state

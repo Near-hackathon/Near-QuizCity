@@ -9,41 +9,45 @@ import {
   type Account,
   type KeyPair as KeyPairType,
 } from "near-api-js";
-import { config } from "../src/runtime-config.js";
 import {
   assertRotationEnvironment,
   parseRotationArgs,
-  rotationTargets,
+  planDemoRotation,
+  rotationConfigFromEnv,
   type RotationTarget,
 } from "../src/rotation.js";
 
 const demoPath = new URL("../demo-accounts.json", import.meta.url);
-const envPath = new URL("../.env", import.meta.url);
 const backupRoot = new URL("../backups/", import.meta.url);
 
 type DemoFile = Record<string, RotationTarget>;
 
 const { confirm, help } = parseRotationArgs(process.argv.slice(2));
 if (help) {
-  console.log(`Usage: node --env-file=.env --import tsx scripts/rotate-demo-keys.ts [--confirm-testnet-rotation]
+  console.log(`Usage: node --env-file=.env --import tsx scripts/rotate-demo-keys.ts [--confirm-demo-key-rotation]
 
-Without the confirmation flag this is a dry run: it prints account IDs and public keys only.
-Rotation is allowed only for APP_ENV=local|test, NEAR_NETWORK=testnet, DEMO_MODE=1.`);
+Rotates only disposable demo player keys in demo-accounts.json.
+It never reads, writes, adds, or deletes the operator payout key or server/.env.
+
+Without the confirmation flag this is a dry run: it prints demo player account IDs
+and public keys only. Rotation is allowed only for APP_ENV=local|test,
+NEAR_NETWORK=testnet, DEMO_MODE=1.`);
   process.exit(0);
 }
 
-assertRotationEnvironment(config);
+const rotation = rotationConfigFromEnv(process.env);
+assertRotationEnvironment(rotation);
 
 const parsed = JSON.parse(readFileSync(demoPath, "utf8")) as DemoFile;
-const targets = rotationTargets(Object.values(parsed), config.operatorAccount, config.contractId);
-const provider = new providers.JsonRpcProvider({ url: config.rpcUrl });
+const plan = planDemoRotation(Object.values(parsed), rotation.operatorAccount, rotation.contractId);
+const provider = new providers.JsonRpcProvider({ url: rotation.rpcUrl });
 
 async function connectAccount(accountId: string, key: KeyPairType): Promise<Account> {
   const keyStore = new keyStores.InMemoryKeyStore();
-  await keyStore.setKey(config.networkId, accountId, key);
+  await keyStore.setKey(rotation.networkId, accountId, key);
   const near = await connect({
-    networkId: config.networkId,
-    nodeUrl: config.rpcUrl,
+    networkId: rotation.networkId,
+    nodeUrl: rotation.rpcUrl,
     keyStore,
     deps: { keyStore },
   });
@@ -88,27 +92,26 @@ function backup(path: URL, destination: string): void {
   writeFileSync(destination, readFileSync(fileURLToPath(path)), { mode: 0o600 });
 }
 
-console.log(`rotation mode: ${confirm ? "CONFIRMED" : "dry run"}`);
+console.log(`demo player key rotation mode: ${confirm ? "CONFIRMED" : "dry run"}`);
 console.log(
-  `network: ${config.networkId} | contract: ${config.contractId} | operator: ${config.operatorAccount}`,
+  `network: ${rotation.networkId} | contract: ${rotation.contractId} | operator (excluded): ${rotation.operatorAccount}`,
 );
 
-for (const entry of targets) {
+for (const entry of plan.accounts) {
   const keys = await currentPublicKeys(entry.accountId);
   console.log(`- ${entry.accountId}: ${keys.length} key(s) [${keys.join(", ")}] -> would add a new key`);
 }
 
 if (!confirm) {
-  console.log("\nNo changes made. Re-run with --confirm-testnet-rotation to rotate these accounts.");
+  console.log("\nNo changes made. Re-run with --confirm-demo-key-rotation to rotate these demo player keys.");
   process.exit(0);
 }
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 const backupDir = join(fileURLToPath(backupRoot), timestamp);
 mkdirSync(backupDir, { recursive: true, mode: 0o700 });
-backup(envPath, join(backupDir, ".env"));
 backup(demoPath, join(backupDir, "demo-accounts.json"));
-console.log(`backups written to ${backupDir}`);
+console.log(`demo-accounts backup written to ${backupDir}`);
 
 const touched: { accountId: string; oldPublicKey: string; newPublicKey: string }[] = [];
 
@@ -130,7 +133,7 @@ async function rotate(
 }
 
 try {
-  for (const entry of targets) {
+  for (const entry of plan.accounts) {
     const oldPublicKey = entry.publicKey;
     const newPublicKey = await rotate(entry, async (next) => {
       entry.secretKey = next.toString();
@@ -138,11 +141,11 @@ try {
       writeAtomic(demoPath, `${JSON.stringify(parsed, null, 2)}\n`);
     });
     touched.push({ accountId: entry.accountId, oldPublicKey, newPublicKey });
-    console.log(`rotated ${entry.accountId} -> ${newPublicKey}`);
+    console.log(`rotated demo player ${entry.accountId} -> ${newPublicKey}`);
   }
 
   const removed = Object.entries(parsed).filter(
-    ([, entry]) => entry.accountId === config.operatorAccount || entry.accountId === config.contractId,
+    ([, entry]) => entry.accountId === rotation.operatorAccount || entry.accountId === rotation.contractId,
   );
   for (const [name] of removed) delete parsed[name];
   if (removed.length > 0) {
@@ -150,34 +153,19 @@ try {
     console.log("removed operator/contract credentials from demo-accounts.json");
   }
 
-  const envText = readFileSync(envPath, "utf8");
-  const operatorEntry: RotationTarget = {
-    accountId: config.operatorAccount,
-    publicKey: (await currentPublicKeys(config.operatorAccount))[0] ?? "",
-    secretKey: config.operatorPrivateKey,
-  };
-  const operatorPublicKey = await rotate(operatorEntry, async (next) => {
-    if (!/^NEAR_OPERATOR_PRIVATE_KEY=.*$/m.test(envText)) {
-      throw new Error("NEAR_OPERATOR_PRIVATE_KEY line not found in .env");
-    }
-    const updated = envText.replace(/^NEAR_OPERATOR_PRIVATE_KEY=.*$/m, `NEAR_OPERATOR_PRIVATE_KEY=${next}`);
-    writeAtomic(envPath, updated);
-  });
-  touched.push({
-    accountId: config.operatorAccount,
-    oldPublicKey: operatorEntry.publicKey,
-    newPublicKey: operatorPublicKey,
-  });
-  console.log(`rotated operator ${config.operatorAccount} -> ${operatorPublicKey}`);
-  console.log(`\nDone. Restart the server. Backups: ${backupDir}`);
+  console.log(`\nDone. Restart the server if it caches demo keys. Backup: ${backupDir}`);
 } catch (error) {
-  console.error(`\nrotation stopped: ${error instanceof Error ? error.message : String(error)}`);
-  console.error("No further accounts were touched. Recovery:");
-  console.error(`- backups: ${backupDir}`);
+  console.error(
+    `\ndemo player key rotation stopped: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  console.error(
+    "No further demo accounts were touched. The operator payout key and server/.env were not modified.",
+  );
+  console.error(`- demo-accounts backup: ${join(backupDir, "demo-accounts.json")}`);
   for (const item of touched) {
     console.error(`- ${item.accountId}: old ${item.oldPublicKey}, new ${item.newPublicKey}`);
   }
-  console.error("- Restore .env and demo-accounts.json from the backup if the new key was not persisted.");
+  console.error("- Restore demo-accounts.json from the backup if the new demo key was not persisted.");
   console.error("- Never print or commit private keys.");
   process.exit(1);
 }

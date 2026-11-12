@@ -1,4 +1,5 @@
 import { providers } from "near-api-js";
+import { collectPages } from "./pagination.js";
 import { config } from "./runtime-config.js";
 
 export const contractId = config.contractId;
@@ -49,3 +50,25 @@ export type ContractBusiness = {
   treasury: string;
   revenue_total: string;
 };
+
+const PAGE_SIZE = 100;
+
+async function viewAll<T>(method: string, total: number, idOf: (item: T) => string | number): Promise<T[]> {
+  return collectPages<T>({
+    total,
+    pageSize: PAGE_SIZE,
+    fetchPage: (fromIndex, limit) => viewContract<T[]>(method, { from_index: fromIndex, limit }),
+    idOf,
+    legacy: () => viewContract<unknown>(method),
+  });
+}
+
+export async function viewAllProperties(stats?: ContractStats): Promise<ContractProperty[]> {
+  const totals = stats ?? (await viewContract<ContractStats>("get_stats"));
+  return viewAll<ContractProperty>("get_properties", Number(totals.properties), (item) => item.id);
+}
+
+export async function viewAllBusinesses(stats?: ContractStats): Promise<ContractBusiness[]> {
+  const totals = stats ?? (await viewContract<ContractStats>("get_stats"));
+  return viewAll<ContractBusiness>("get_businesses", Number(totals.businesses), (item) => item.id);
+}

@@ -34,11 +34,14 @@ export async function assertTxSucceeded(txHash: string, signerId: string): Promi
   return outcome;
 }
 
-export type ChainEvent = { event: string; data: Record<string, unknown>[] };
+import type { ChainEvent } from "./event-ledger.js";
 
 export function parseEvents(outcome: FinalExecutionOutcome): ChainEvent[] {
   const events: ChainEvent[] = [];
   for (const receipt of outcome.receipts_outcome ?? []) {
+    if (receipt.outcome?.executor_id && receipt.outcome.executor_id !== config.contractId) {
+      continue;
+    }
     for (const log of receipt.outcome?.logs ?? []) {
       if (!log.startsWith("EVENT_JSON:")) continue;
       try {

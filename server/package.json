@@ -12,9 +12,10 @@
     "chain:seed": "node --env-file=.env --import tsx scripts/chain-seed.ts",
     "e2e": "node --env-file=.env --import tsx scripts/e2e.ts",
     "exploit": "node --env-file=.env --import tsx scripts/exploit.ts",
-    "test": "node --import tsx --test test/config.test.ts test/demo.test.ts test/rotation.test.ts",
-    "keys:rotate": "node --env-file=.env --import tsx scripts/rotate-demo-keys.ts --confirm-testnet-rotation",
-    "keys:rotate:dry-run": "node --env-file=.env --import tsx scripts/rotate-demo-keys.ts"
+    "test": "node --import tsx --test test/config.test.ts test/demo.test.ts test/rotation.test.ts test/pagination.test.ts test/event-ledger.test.ts test/access-key.test.ts",
+    "demo-keys:rotate": "node --env-file=.env --import tsx scripts/rotate-demo-keys.ts --confirm-demo-key-rotation",
+    "demo-keys:rotate:dry-run": "node --env-file=.env --import tsx scripts/rotate-demo-keys.ts",
+    "payout-key:verify": "node --env-file=.env --import tsx scripts/verify-operator-key.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

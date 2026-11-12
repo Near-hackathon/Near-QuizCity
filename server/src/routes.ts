@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { sql } from "./db.js";
-import { viewContract } from "./near.js";
+import { viewAllBusinesses, viewContract } from "./near.js";
 import { creditReward, payJob } from "./operator.js";
 import { getMirroredBalance, refreshWallet } from "./sync.js";
+import { propertySaleFromReceipts, ReceiptError, servicePaymentReceipt } from "./event-ledger.js";
 import { assertTxSucceeded, parseEvents } from "./verify.js";
 
 type ChainPlayer = {
@@ -22,15 +23,6 @@ type ChainProperty = {
   price: string;
   for_sale: boolean;
   transfer_count: number;
-};
-
-type ChainBusiness = {
-  id: number;
-  name: string;
-  owner: string;
-  property_id: number;
-  treasury: string;
-  revenue_total: string;
 };
 
 const STARTER_ALLOWANCE = 500;
@@ -287,14 +279,21 @@ export function registerRoutes(app: FastifyInstance): void {
     if (!property) fail("property not found", 404);
     if (property.owner !== playerWallet(accountId)) fail("chain ownership not confirmed", 409);
 
-    const sale = parseEvents(outcome)
-      .filter((event) => event.event === "transfer")
-      .flatMap((event) => event.data)
-      .find((entry) => entry.kind === "property_sale" && entry.to === playerWallet(accountId));
-
-    const [before] = await sql`select owner_wallet, price from properties where id = ${propertyId}`;
-    const seller = typeof sale?.from === "string" ? sale.from : (before?.owner_wallet ?? "unknown");
-    const price = sale?.amount !== undefined ? Number(sale.amount) : Number(before?.price ?? 0);
+    const events = parseEvents(outcome);
+    const buyer = playerWallet(accountId);
+    let seller: string;
+    let price: number;
+    try {
+      // Canonical events take priority; the legacy parser only covers
+      // pre-Phase-1 receipts and is removed after the compatibility window.
+      const receipt = propertySaleFromReceipts(events, buyer, propertyId, property.transfer_count);
+      if (!receipt) fail("property sale receipt is missing", 409);
+      seller = receipt.seller;
+      price = receipt.price;
+    } catch (error) {
+      if (error instanceof ReceiptError) fail(error.message, 409);
+      throw error;
+    }
 
     await sql`
       insert into properties (id, district, x, y, owner_wallet, property_type, price, for_sale, transfer_count, updated_at)
@@ -308,11 +307,9 @@ export function registerRoutes(app: FastifyInstance): void {
         transfer_count = excluded.transfer_count,
         updated_at = now()
     `;
-    if (price > 0 && seller !== "unknown") {
-      await recordTx(txHash, seller, playerWallet(accountId), price, "property_sale", String(propertyId));
-      await refreshWallet(playerWallet(accountId));
-      await refreshWallet(seller);
-    }
+    await recordTx(txHash, buyer, seller, price, "property_sale", String(propertyId));
+    await refreshWallet(buyer);
+    await refreshWallet(seller);
     return { property, seller, price };
   });
 
@@ -324,7 +321,7 @@ export function registerRoutes(app: FastifyInstance): void {
     const txHash = text(body.txHash, "txHash");
 
     await assertTxSucceeded(txHash, accountId);
-    const businesses = await viewContract<ChainBusiness[]>("get_businesses");
+    const businesses = await viewAllBusinesses();
     const business = businesses.find((b) => b.owner === accountId && Number(b.property_id) === propertyId);
     if (!business) fail("business creation not confirmed on chain", 409);
 
@@ -358,15 +355,32 @@ export function registerRoutes(app: FastifyInstance): void {
     const txHash = text(body.txHash, "txHash");
 
     const outcome = await assertTxSucceeded(txHash, accountId);
-    const businesses = await viewContract<ChainBusiness[]>("get_businesses");
+    const businesses = await viewAllBusinesses();
     const business = businesses.find((b) => Number(b.id) === businessId);
     if (!business) fail("business not found on chain", 404);
 
-    const payment = parseEvents(outcome)
-      .filter((event) => event.event === "transfer")
-      .flatMap((event) => event.data)
-      .find((entry) => entry.kind === "service_payment" && entry.from === playerWallet(accountId));
-    const actualAmount = payment?.amount !== undefined ? Number(payment.amount) : amount;
+    const events = parseEvents(outcome);
+    const payer = playerWallet(accountId);
+    let receipt: { amount: number } | null;
+    try {
+      receipt = servicePaymentReceipt(events, payer, business.treasury, businessId);
+    } catch (error) {
+      if (error instanceof ReceiptError) fail(error.message, 409);
+      throw error;
+    }
+    let actualAmount: number;
+    if (receipt) {
+      actualAmount = receipt.amount;
+    } else {
+      // Legacy transfer events only cover pre-Phase-1 receipts. Remove once they age out (Phase 2).
+      const legacyPayment = events
+        .filter((event) => event.event === "transfer")
+        .flatMap((event) => event.data)
+        .find((entry) => entry.kind === "service_payment" && entry.from === payer);
+      if (!legacyPayment) fail("service payment receipt is missing", 409);
+      actualAmount = Number(legacyPayment.amount);
+    }
+    if (actualAmount !== amount) fail("request amount does not match the receipt", 409);
 
     await sql`update businesses set revenue_total = ${business.revenue_total} where id = ${businessId}`;
     const previous = await getMirroredBalance(business.treasury);
@@ -390,7 +404,7 @@ export function registerRoutes(app: FastifyInstance): void {
     const txHash = text(body.txHash, "txHash");
 
     await assertTxSucceeded(txHash, accountId);
-    const businesses = await viewContract<ChainBusiness[]>("get_businesses");
+    const businesses = await viewAllBusinesses();
     const business = businesses.find((b) => Number(b.id) === businessId);
     if (!business) fail("business not found on chain", 404);
     if (business.owner !== newOwner) fail("chain transfer not confirmed", 409);
