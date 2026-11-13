@@ -27,7 +27,7 @@ function entry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
     reference: "job:1",
     entityType: "player",
     entityId: "alice.testnet",
-    blockHeight: 100,
+    blockHeight: "100",
     blockHash: "block-hash",
     chainTimestamp: "2026-11-12T00:00:00.000Z",
     payload: {
@@ -233,7 +233,7 @@ test("nullable block metadata is compared symmetrically in both directions", asy
     await sql`update chain_events set block_height = null`;
     await sql`update transactions set block_height = null`;
     await assert.rejects(
-      sql.begin((transaction) => insertLedgerEntries(transaction, [entry({ blockHeight: 100 })])),
+      sql.begin((transaction) => insertLedgerEntries(transaction, [entry({ blockHeight: "100" })])),
       /block_height/,
     );
 

@@ -42,6 +42,11 @@ export type ContractProperty = {
   transfer_count: number;
 };
 
+export type ContractWallet = {
+  wallet_id: string;
+  balance: string;
+};
+
 export type ContractBusiness = {
   id: number;
   name: string;
@@ -71,4 +76,9 @@ export async function viewAllProperties(stats?: ContractStats): Promise<Contract
 export async function viewAllBusinesses(stats?: ContractStats): Promise<ContractBusiness[]> {
   const totals = stats ?? (await viewContract<ContractStats>("get_stats"));
   return viewAll<ContractBusiness>("get_businesses", Number(totals.businesses), (item) => item.id);
+}
+
+export async function viewAllWallets(): Promise<ContractWallet[]> {
+  const total = await viewContract<number>("get_wallet_count");
+  return viewAll<ContractWallet>("get_wallets", Number(total), (item) => item.wallet_id);
 }

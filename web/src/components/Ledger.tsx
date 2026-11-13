@@ -32,7 +32,8 @@ export function Ledger({ wallets, transactions }: Props) {
         {transactions.map((tx) => (
           <li key={tx.seq}>
             <span className="mono">
-              {short(tx.wallet_from)} → {short(tx.wallet_to)}
+              {tx.wallet_from ? short(tx.wallet_from) : "mint"} →{" "}
+              {tx.wallet_to ? short(tx.wallet_to) : "burn"}
             </span>
             <strong>{money(tx.amount)}</strong>
             <span className="kind">{tx.kind}</span>

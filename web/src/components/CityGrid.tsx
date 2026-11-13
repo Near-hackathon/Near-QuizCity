@@ -14,8 +14,9 @@ export function short(wallet: string) {
     .replace("npc:", "");
 }
 
-export function money(value: string | number) {
-  return Number(value).toLocaleString();
+export function money(value: string) {
+  const canonical = value.replace(/^0+(?=\d)/, "");
+  return canonical.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 type GridProps = {

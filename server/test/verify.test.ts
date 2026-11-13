@@ -4,8 +4,15 @@ import { EVENT_STANDARD, EVENT_VERSION } from "../src/event-ledger.js";
 import { testEnv } from "./fixtures.js";
 
 Object.assign(process.env, testEnv);
-const { enrichBlockMetadata, extractEvents, requireExpectedEvent, verifyTransactionAction } =
-  await import("../src/verify.js");
+const {
+  classifyFinalStatus,
+  classifyProviderError,
+  enrichBlockMetadata,
+  extractEvents,
+  requireExpectedEvent,
+  verifyTransactionAction,
+} = await import("../src/verify.js");
+const { AppError } = await import("../src/errors.js");
 
 function canonical(overrides: Record<string, unknown> = {}, dataOverrides: Record<string, unknown> = {}) {
   return {
@@ -204,10 +211,10 @@ test("enriches block metadata once per block hash", async () => {
   let lookups = 0;
   const enriched = await enrichBlockMetadata(events, async (hash) => {
     lookups += 1;
-    return { height: hash === "block-1" ? 42 : 43, timestamp: "2026-11-12T00:00:00.000Z" };
+    return { height: hash === "block-1" ? "42" : "43", timestamp: "2026-11-12T00:00:00.000Z" };
   });
   assert.equal(lookups, 1);
-  assert.equal(enriched[0].blockHeight, 42);
+  assert.equal(enriched[0].blockHeight, "42");
   assert.equal(enriched[0].chainTimestamp, "2026-11-12T00:00:00.000Z");
 });
 
@@ -283,4 +290,25 @@ test("expected economic event binds wallets, amount, and reference", () => {
   assert.throws(() => requireExpectedEvent(events, { ...expected, walletFrom: "npc:other" }), /expected/);
   assert.throws(() => requireExpectedEvent(events, { ...expected, amount: "101" }), /expected/);
   assert.throws(() => requireExpectedEvent(events, { ...expected, reference: "job:other" }), /expected/);
+});
+
+test("verification errors use the stable chain error taxonomy", () => {
+  assert.throws(
+    () => classifyFinalStatus({ Failure: { error_message: "boom" } }),
+    (error: unknown) => error instanceof AppError && error.code === "TX_FAILED" && error.statusCode === 409,
+  );
+  assert.throws(
+    () => classifyFinalStatus({ Started: {} }),
+    (error: unknown) => error instanceof AppError && error.code === "TX_PENDING" && error.statusCode === 409,
+  );
+  assert.doesNotThrow(() => classifyFinalStatus({ SuccessValue: "" }));
+
+  assert.equal(classifyProviderError(new Error("request timeout")).code, "CHAIN_TIMEOUT");
+  assert.equal(classifyProviderError({ type: "UNKNOWN_TRANSACTION" }).code, "TX_NOT_FOUND");
+  assert.equal(classifyProviderError(new Error("ECONNRESET")).code, "CHAIN_UNAVAILABLE");
+
+  assert.throws(
+    () => verifyTransactionAction(outcomeWithAction("buy_property", { property_id: 4 }), expectation),
+    (error: unknown) => error instanceof AppError && error.code === "TX_MISMATCH",
+  );
 });

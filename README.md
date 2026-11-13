@@ -86,7 +86,7 @@ npm run db:reset && npm run db:seed
 npm run dev                               # API :8787, web :5173
 ```
 
-`.env` keys: `APP_ENV`, `DEMO_MODE`, `DATABASE_URL`, `PGSSL`, `PORT`, `HOST`, `WEB_ORIGIN`, `NEAR_NETWORK`, `NEAR_RPC_URL`, `NEAR_CONTRACT_ID`, `NEAR_OPERATOR_ACCOUNT`, `NEAR_OPERATOR_PRIVATE_KEY`, `NPC_TICK_MS`, `E2E_API`. Configuration is validated once at startup; invalid or missing values stop the process with an actionable message and a redacted summary is logged. Tests import the pure validator and need no `.env`.
+`.env` keys: `APP_ENV`, `DEMO_MODE`, `DATABASE_URL`, `PGSSL`, `PORT`, `HOST`, `WEB_ORIGIN`, `NEAR_NETWORK`, `NEAR_RPC_URL`, `NEAR_CONTRACT_ID`, `NEAR_OPERATOR_ACCOUNT`, `NEAR_OPERATOR_PRIVATE_KEY`, `NPC_TICK_MS`, `E2E_API`, and the chain/readiness worker settings (`CHAIN_EVENT_SOURCE_URL`, `CHAIN_SOURCE_REQUIRED`, `CHAIN_START_BLOCK`, `CHAIN_POLL_INTERVAL_MS`, `CHAIN_PAGE_SIZE`, `CHAIN_FETCH_TIMEOUT_MS`, `CHAIN_MAX_RETRIES`, `READINESS_TIMEOUT_MS`). See [`docs/chain-ingestion.md`](./docs/chain-ingestion.md). Staging and production refuse to start without a chain event source unless `CHAIN_SOURCE_REQUIRED=0` is set explicitly. Configuration is validated once at startup; invalid or missing values stop the process with an actionable message and a redacted summary is logged. Tests import the pure validator and need no `.env`.
 
 `NEAR_OPERATOR_PRIVATE_KEY` is a payout-only function-call key for `credit_reward` and `pay_job`. `NEAR_DEPLOY_PRIVATE_KEY` is the contract account's offline full-access deploy/recovery key and is required only for `npm run chain:seed`; pass it in the shell and never store it in `server/.env`.
 
@@ -129,11 +129,17 @@ State-changing methods emit canonical NEP-297-style `EVENT_JSON` logs. Each ledg
 
 ## Server API
 
-`GET /config` · `GET /demo/accounts` · `GET /players/:account` · `GET /jobs` · `GET /npcs` · `GET /quizzes` · `GET /transactions` · `GET /snapshots` · `GET /contract/stats`
+`GET /health/live` · `GET /health/ready` · `GET /v1/config` · `GET /v1/demo/accounts` · `GET /v1/players/:account` · `GET /v1/jobs` · `GET /v1/npcs` · `GET /v1/quizzes` · `GET /v1/transactions` · `GET /v1/snapshots` · `GET /v1/contract/stats` · `GET /v1/auth/me`
 
-`POST /players/register` · `POST /players/claim` · `POST /jobs/:id/accept` · `POST /jobs/:id/complete` · `POST /quizzes/:id/start` · `POST /quizzes/:id/submit` · `POST /properties/:id/buy` · `POST /businesses` · `POST /businesses/:id/pay` · `POST /businesses/:id/transfer` · `POST /sync`
+`POST /v1/auth/nonce` · `POST /v1/auth/verify` · `POST /v1/auth/logout` · `POST /v1/players/register` · `POST /v1/players/claim` · `POST /v1/jobs/:id/accept` · `POST /v1/jobs/:id/submit` · `POST /v1/jobs/:id/verify` · `POST /v1/jobs/:id/complete` · `POST /v1/jobs/:id/retry-payment` · `POST /v1/quizzes/:id/start` · `POST /v1/quizzes/:id/submit` · `POST /v1/properties/:id/buy` · `POST /v1/businesses` · `POST /v1/businesses/:id/pay` · `POST /v1/businesses/:id/transfer` · `POST /v1/sync`
 
-All mutating routes require a `txHash` (and an `accountId` where relevant).
+All mutating routes require an authenticated session plus the `x-csrf-token` header. Identity comes from the session cookie; request bodies never supply `accountId`.
+
+Sign-in implements NEP-413. `POST /v1/auth/nonce` returns the application message, a 32-byte nonce (base64 transport), the contract recipient, and the configured callback URL. The client decodes the nonce to 32 bytes and calls the wallet's standard `signMessage({ message, recipient, nonce, callbackUrl })`; the wallet signs `SHA256(Borsh(u32(2147484061)) || Borsh({message,nonce,recipient,callbackUrl}))`. `POST /v1/auth/verify` validates the nonce encoding, re-derives the same digest from stored issued/expiry times, requires the submitted key to have `FullAccess` permission (function-call keys cannot log in), verifies the signature, and only then consumes the nonce and creates the session. Raw-JSON signatures do not verify. The local demo signer computes the same digest, so demo and production share one protocol.
+
+Session cookies are `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` whenever `APP_ENV` is staging/production or `WEB_ORIGIN` is HTTPS — proxy TLS termination is therefore safe. `/jobs/:id/retry-payment` is operator/admin only.
+
+QC amounts are canonical decimal strings, never JavaScript numbers. Validation failures and application errors use one envelope: `{"error":{"code","message","requestId","details"}}`. Fastify validation runs from TypeBox schemas (including a `qc-amount` format that rejects U128 max + 1 before the handler), and OpenAPI is served at `/documentation` only when `APP_ENV=local` or `ENABLE_API_DOCS=1`. Lists return `{items, nextCursor}`; `/health/live` and `/health/ready` are the only stable non-versioned routes. `/health/ready` checks PostgreSQL, a contract view, and the configured indexer independently, each with a timeout, and returns safe `checks` statuses plus 503 when a required dependency fails. `/health/live` performs no dependency I/O. Job verification and `/sync` require an `operator` or `admin` role; grant local/test roles with `npm run role:grant -- --account <id> --role <role> --confirm-grant-role`.
 
 ## Tests
 
@@ -144,7 +150,7 @@ npm run e2e                                # full player loop against testnet
 npm run exploit                            # 13 adversarial checks (mutates demo state)
 ```
 
-`npm run verify` runs the production contract tests (49), demo-reset contract tests (52), 92 server tests, the toolchain and WASM-export checker tests, formatting/linting/typechecks, both builds, and a production-WASM check that reads real function exports and rejects demo helpers. `npm run db:test` executes 50 PostgreSQL integration tests for migrations, ledger atomicity/conflict behavior, quiz snapshots, job payment races/reconciliation, and the world seed against disposable schemas.
+`npm run verify` runs the production contract tests (49), demo-reset contract tests (52), 125 server tests, the toolchain and WASM-export checker tests, formatting/linting/typechecks, both builds, and a production-WASM check that reads real function exports and rejects demo helpers. `npm run db:test` executes 113 PostgreSQL integration tests for migrations, ledger atomicity/conflict behavior, NEP-413 auth, transaction consumption, quiz snapshots, job payment races/reconciliation, chain ingestion/rebuild/dead-letter handling, readiness, sync, and the world seed against disposable schemas.
 
 `e2e` and `exploit` mutate testnet state. They are intentionally deferred while the Phase 1 live deployment/key work remains owner-gated; do not treat them as current evidence until the corrected contract is deployed and approved.
 
@@ -171,7 +177,7 @@ Demo sign-in is opt-in and local-demo-only. `DEMO_MODE=1` is accepted only when 
 - `NEAR_NETWORK=testnet`
 - `HOST` is loopback (`127.0.0.1`, `localhost`, or `::1`)
 
-With the flag absent or `0`, `GET /demo/accounts` returns 404, the web client renders a read-only notice, and no account picker is mounted. The route also refuses to load keys unless the full configuration is safe (503 on an impossible unsafe override), filtering the operator account, the contract account, and any entry whose secret matches the operator key. Startup fails if the operator account or key is missing. Real wallet sign-in is intentionally not implemented yet (QC-0502), so non-demo deployments are read-only.
+With the flag absent or `0`, `GET /demo/accounts` returns 404, the web client does not mount the demo account picker, and browser commands need a wallet signer. The route also refuses to load keys unless the full configuration is safe (503 on an impossible unsafe override), filtering the operator account, the contract account, and any entry whose secret matches the operator key. Startup fails if the operator account or key is missing. Server-side NEP-413 verification is production-shaped; the shipped browser wallet adapter is a thin provider hook and the full wallet-selector UX is still deferred (QC-0502), so non-demo browser deployments remain read-only until that lands.
 
 Demo player keys are disposable testnet keys stored in `localStorage`. Rotation is player-only and dry-run by default:
 
@@ -193,7 +199,7 @@ npm run payout-key:verify -- --public-key ed25519:<new-key>
 ## Security notes
 
 - The operator key lives only in the server environment. It is never sent to the browser and `/demo/accounts` filters it out. It must be a payout-only function-call key for `credit_reward` and `pay_job`, not a full-access key.
-- Demo sign-in uses disposable testnet keys in `localStorage`. This is a demo convenience, not a production auth pattern — production would use a wallet selector with the user's own signer (QC-0502). Non-demo deployments are read-only until then.
+- Demo sign-in uses disposable testnet keys in `localStorage` and is only reachable through `DEMO_MODE=1`. Server-side auth is a real NEP-413 Borsh/prefix/SHA-256 signature check over one-time, domain/network-bound nonces; only full-access keys can authenticate. The full wallet-selector UX is still deferred (QC-0502), so non-demo browser deployments remain read-only until then.
 - `DEMO_MODE` defaults to `0`; configuration omission cannot expose keys.
 - The Postgres mirror can be wiped and rebuilt with `POST /sync` / `npm run db:reset`; it holds no authority.
 - `reset_demo` is operator-gated; `migrate_reset` is `#[private]` and callable only by the contract account. Both exist only in the `demo-reset` build. Production builds do not export them.
@@ -206,14 +212,50 @@ npm run payout-key:verify -- --public-key ed25519:<new-key>
 npm run verify
 ```
 
-In order: Rust toolchain pin check; Prettier and `cargo fmt --check`; ESLint (runtime-specific globals) and `cargo clippy -D warnings`; TypeScript for server and web; 49 production contract tests, 52 demo-reset contract tests, 92 server tests, and the toolchain/WASM-export checker tests; then the contract WASM, server typecheck, and production web build; finally the production-WASM demo-helper check, which inspects `WebAssembly.Module.exports` rather than raw bytes. `npm ci && npm run verify` works without `server/.env`.
+In order: Rust toolchain pin check; Prettier and `cargo fmt --check`; ESLint (runtime-specific globals) and `cargo clippy -D warnings`; TypeScript for server and web; 49 production contract tests, 52 demo-reset contract tests, 125 server tests, and the toolchain/WASM-export checker tests; then the contract WASM, server typecheck, and production web build; finally the production-WASM demo-helper check, which inspects `WebAssembly.Module.exports` rather than raw bytes. `npm ci && npm run verify` works without `server/.env`.
 
 The same command runs in `.github/workflows/verify.yml` on Node 20.20 and Rust 1.95, with the WASM checksum recorded as an artifact.
 
+## Workers and reconciliation
+
+Four bounded workers run in-process when the API starts, each performing an
+immediate first tick (restart catch-up), preventing overlap, using exponential
+backoff with jitter capped after jitter, and exposing an async `stop()` that
+waits for in-flight work before the lifecycle closes PostgreSQL:
+
+- chain ingester (`CHAIN_POLL_INTERVAL_MS`, only when a source is configured)
+- job payment reconciler (60s)
+- quiz reward reconciler (60s)
+- NPC tick (`NPC_TICK_MS`)
+
+Manual entry points:
+
+```bash
+npm run jobs:reconcile
+npm run quiz:reconcile
+npm run chain:ingest
+npm run chain:reconcile
+npm run chain:failure -- --retry --receipt <id> --index <n>
+npm run chain:failure -- --ignore --receipt <id> --index <n> --reason "<text>"
+```
+
+Unknown payout outcomes are typed (`confirmed | rejected | unknown`) and never
+trigger a second blind chain call; only verified reconciliation can finalize
+them. Job and quiz reward projections are replay-idempotent: pool accounting and
+reconciliation counters change only on the first applied transition, and
+conflicting amounts/hashes fail and roll back.
+
+Mirror rebuild stages and validates complete provider history before replacing
+active chain-owned rows. Event ordering is enforced across page boundaries,
+every immutable duplicate field must match, a non-zero supply reconciliation
+rolls back, and rebuild/full-sync share an exclusion guard.
+
 ## Known limitations
 
-- No event indexer; the mirror refreshes from views on write and every 10s. `POST /sync` catches anything missed.
+- The chain event ingester speaks the documented HTTP contract in [`docs/chain-ingestion.md`](./docs/chain-ingestion.md), but no production indexer URL has been selected or deployed. Until an owner-approved source is configured, staging/production readiness fails and live ingestion does not run; request-time writes and `POST /sync` still keep the mirror current.
+- Malformed or unverifiable events block the cursor until an operator runs `npm run chain:failure -- --retry` or `--ignore` with an audited reason.
+- `npm run chain:rebuild` is local/test only. It fetches and validates the complete provider history into a connection-local staging table before touching active rows, holds a network/contract advisory lock, replaces only chain-owned derived tables in one transaction, rolls back on any failure, records each run in `rebuild_runs`, and never cascades into server-owned tables. It exits non-zero when canonical supply and the mirrored wallet sum differ.
 - Single city plot seed; the schema supports many districts.
-- Real-time presence and chat are out of scope; the NPC tick is the only autonomous actor.
-- Deployed to testnet only. For production, point `DATABASE_URL` at Neon, host the API behind TLS, and disable demo mode.
-- No wallet-selector sign-in yet; non-demo deployments are read-only (QC-0502).
+- Real-time presence and chat are out of scope; NPC, chain-ingester, job-reconciliation, and quiz-reconciliation workers run in-process.
+- Deployed to testnet only. For production, point `DATABASE_URL` at Neon, host the API behind TLS, disable demo mode, and configure `CHAIN_EVENT_SOURCE_URL`.
+- The full browser wallet-selector UX is still deferred (QC-0502); non-demo browser deployments are read-only. The server-side signed-message login path is implemented.

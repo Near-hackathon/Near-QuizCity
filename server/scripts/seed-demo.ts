@@ -74,9 +74,16 @@ const questions = [
 ];
 
 await sql`
-  insert into quizzes (id, title, reward_pool, entry_fee, status)
-  values ('daily-quiz', 'Daily Knowledge Round', 1000, 0, 'live')
-  on conflict (id) do update set status = 'live'
+  insert into quizzes (
+    id, title, reward_pool, entry_fee, status, question_count, pass_score,
+    reward_amount, attempt_duration_seconds, funding_model
+  ) values (
+    'daily-quiz', 'Daily Knowledge Round', '1000', '0', 'live', 8, 6, '25', 600, 'mint'
+  )
+  on conflict (id) do update set
+    status = 'live', question_count = excluded.question_count,
+    pass_score = excluded.pass_score, reward_amount = excluded.reward_amount,
+    attempt_duration_seconds = excluded.attempt_duration_seconds
 `;
 
 for (const q of questions) {
@@ -94,7 +101,7 @@ for (const q of questions) {
 await sql`
   insert into jobs (id, employer_wallet, title, description, payment, status, reference)
   values ('job-research-1', 'npc:professor-kofi', 'Research the city archives',
-          'Read the district records and file a short summary with Professor Kofi.', 100, 'open', 'job-research-1')
+          'Read the district records and file a short summary with Professor Kofi.', '100', 'open', 'job-research-1')
   on conflict (id) do nothing
 `;
 

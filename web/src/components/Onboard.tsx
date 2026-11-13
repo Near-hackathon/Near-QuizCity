@@ -51,7 +51,7 @@ export function Onboard({ session, chainPlayer, onLogin, onLogout, refresh }: Pr
     if (!session) return;
     void run(async () => {
       const hash = await call(session, "register_player", { username });
-      await api.register(session.accountId, username, hash);
+      await api.register(username, hash);
     });
   }
 
@@ -59,7 +59,7 @@ export function Onboard({ session, chainPlayer, onLogin, onLogout, refresh }: Pr
     if (!session) return;
     void run(async () => {
       const hash = await call(session, "claim_starter", {});
-      await api.claim(session.accountId, hash);
+      await api.claim(hash);
     });
   }
 

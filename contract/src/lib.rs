@@ -59,6 +59,12 @@ pub struct Business {
 }
 
 #[near(serializers = [json])]
+pub struct WalletBalance {
+    pub wallet_id: String,
+    pub balance: U128,
+}
+
+#[near(serializers = [json])]
 pub struct CityStats {
     pub players: u64,
     pub properties: u64,
@@ -494,8 +500,8 @@ impl Contract {
             &id,
             &Property {
                 id,
-                kind,
-                district,
+                kind: kind.clone(),
+                district: district.clone(),
                 x,
                 y,
                 owner: owner_wallet.clone(),
@@ -515,6 +521,10 @@ impl Contract {
             &format!("property:{id}"),
             serde_json::json!({
                 "id": id,
+                "kind": kind,
+                "district": district,
+                "x": x,
+                "y": y,
                 "owner_wallet": owner_wallet,
                 "listing_price": U128(price.0),
                 "for_sale": for_sale,
@@ -659,7 +669,7 @@ impl Contract {
             &id,
             &Business {
                 id,
-                name,
+                name: name.clone(),
                 owner: account.clone(),
                 property_id,
                 treasury: treasury.clone(),
@@ -686,6 +696,7 @@ impl Contract {
             &format!("business:{id}"),
             serde_json::json!({
                 "id": id,
+                "name": name,
                 "owner": account,
                 "owner_wallet": buyer_wallet,
                 "property_id": property_id,
@@ -999,6 +1010,27 @@ impl Contract {
             .skip(start)
             .take(limit)
             .map(|(_, value)| value)
+            .collect()
+    }
+
+    pub fn get_wallet_count(&self) -> u64 {
+        self.wallets.len()
+    }
+
+    /// Returns up to `limit` wallets starting at zero-based offset `from_index`.
+    /// Wallets are append-only for this lifecycle, so iteration order is stable.
+    pub fn get_wallets(&self, from_index: u64, limit: u64) -> Vec<WalletBalance> {
+        let Some((start, limit)) = Self::page_bounds(from_index, limit, self.wallets.len()) else {
+            return Vec::new();
+        };
+        self.wallets
+            .iter()
+            .skip(start)
+            .take(limit)
+            .map(|(wallet_id, balance)| WalletBalance {
+                wallet_id,
+                balance: U128(balance),
+            })
             .collect()
     }
 

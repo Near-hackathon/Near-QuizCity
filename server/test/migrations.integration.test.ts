@@ -75,6 +75,36 @@ test("a pre-migration schema upgrades without losing rows", async () => {
   });
 });
 
+test("dead-letter source repair refuses an ambiguous legacy cursor source", async () => {
+  await withTestSchema(async ({ sql }) => {
+    const repairIndex = realMigrations.findIndex(
+      (migration) => migration.filename === "0019_dead_letter_source_repair.sql",
+    );
+    assert.ok(repairIndex > 0, "source repair migration must exist after the audit migration");
+    await runMigrations(postgresMigrationStore(sql), realMigrations.slice(0, repairIndex));
+    await sql`
+      insert into chain_cursors (
+        network_id, contract_id, source, next_cursor, last_finalized_block
+      ) values
+        ('testnet', 'quizcity.testnet', 'source-a', '10', 9),
+        ('testnet', 'quizcity.testnet', 'source-b', '10', 9)
+    `;
+    await sql`
+      insert into chain_event_failures (
+        network_id, contract_id, source, receipt_id, event_index,
+        block_height, error_code, error_message
+      ) values (
+        'testnet', 'quizcity.testnet', 'source-a', 'receipt', 0,
+        '10', 'DEAD_LETTER', 'legacy failure'
+      )
+    `;
+
+    await runMigrations(postgresMigrationStore(sql), realMigrations);
+    const [failure] = await sql`select source from chain_event_failures where receipt_id = 'receipt'`;
+    assert.equal(failure.source, null);
+  });
+});
+
 test("checksum drift is rejected before any new migration runs", async () => {
   await withTestSchema(async ({ sql }) => {
     await runMigrations(postgresMigrationStore(sql), [realMigrations[0]]);

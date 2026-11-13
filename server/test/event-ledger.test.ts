@@ -31,7 +31,7 @@ const sale = (overrides: Record<string, unknown> = {}): ChainEvent => ({
 
 test("property sale receipt keeps buyer to seller direction", () => {
   const receipt = propertySaleReceipt([sale()], "player:buyer.testnet", 2, 1);
-  assert.deepEqual(receipt, { seller: "player:seller.testnet", price: 300 });
+  assert.deepEqual(receipt, { seller: "player:seller.testnet", price: "300" });
 });
 
 test("property sale receipt rejects the old reversed direction", () => {
@@ -81,7 +81,7 @@ const legacy = (overrides: Record<string, unknown> = {}): ChainEvent => ({
 test("legacy property sale reads the seller from `to`", () => {
   assert.deepEqual(legacyPropertySaleReceipt([legacy()], "player:buyer.testnet"), {
     seller: "player:seller.testnet",
-    price: 300,
+    price: "300",
   });
 });
 
@@ -108,7 +108,7 @@ test("legacy property sale rejects invalid parties", () => {
 });
 
 test("legacy property sale rejects invalid amounts", () => {
-  for (const amount of ["0", "-5", "abc", "9007199254740992"]) {
+  for (const amount of ["0", "-5", "abc", "9999999999999999999999999999999999999999"]) {
     assert.throws(
       () => legacyPropertySaleReceipt([legacy({ amount })], "player:buyer.testnet"),
       ReceiptError,
@@ -129,11 +129,11 @@ test("canonical receipt takes priority when legacy logs are also present", () =>
   const events = [legacy({ to: "player:legacy-seller.testnet" }), sale()];
   assert.deepEqual(legacyPropertySaleReceipt(events, "player:buyer.testnet"), {
     seller: "player:legacy-seller.testnet",
-    price: 300,
+    price: "300",
   });
   assert.deepEqual(propertySaleFromReceipts(events, "player:buyer.testnet", 2, 1), {
     seller: "player:seller.testnet",
-    price: 300,
+    price: "300",
   });
 });
 
@@ -155,6 +155,6 @@ test("service payment receipt keeps customer to business direction", () => {
       ],
     },
   ];
-  assert.deepEqual(servicePaymentReceipt(events, "player:bob.testnet", "biz:1", 1), { amount: 20 });
+  assert.deepEqual(servicePaymentReceipt(events, "player:bob.testnet", "biz:1", 1), { amount: "20" });
   assert.throws(() => servicePaymentReceipt(events, "player:alice.testnet", "biz:1", 1), ReceiptError);
 });

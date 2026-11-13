@@ -38,9 +38,20 @@ export function JobsPanel({ jobs, me, busy, onAccept, onComplete }: Props) {
                     Accept job
                   </button>
                 )}
-                {mine && ["accepted", "submitted", "verified", "payment_failed"].includes(job.status) && (
+                {mine && job.status === "accepted" && (
                   <button className="btn primary" disabled={busy} onClick={() => onComplete(job)}>
-                    Submit, verify & get paid
+                    Submit work
+                  </button>
+                )}
+                {job.status === "submitted" && <span className="muted">Awaiting operator verification</span>}
+                {mine && job.status === "verified" && (
+                  <button className="btn primary" disabled={busy} onClick={() => onComplete(job)}>
+                    Get paid
+                  </button>
+                )}
+                {mine && job.status === "payment_failed" && (
+                  <button className="btn" disabled={busy} onClick={() => onComplete(job)}>
+                    Reconcile payment
                   </button>
                 )}
                 {job.status === "paid" && job.chain_tx && (
@@ -72,7 +83,7 @@ type QuizProps = {
   submit: (
     attemptId: string,
     answers: Record<string, number>,
-  ) => Promise<{ score: number; total: number; reward: number; txHash: string | null }>;
+  ) => Promise<{ score: number; total: number; reward: string; txHash: string | null }>;
 };
 
 export function QuizPanel({ me, busy, start, submit }: QuizProps) {
@@ -166,8 +177,8 @@ export function QuizPanel({ me, busy, start, submit }: QuizProps) {
             {result.score}/{result.total} correct
           </strong>
           <p>
-            {result.reward > 0
-              ? `Reward: ${result.reward} QC`
+            {BigInt(result.reward) > 0n
+              ? `Reward: ${money(result.reward)} QC`
               : "No reward this attempt (pass mark or daily limit)."}
           </p>
           {result.txHash && (

@@ -18,6 +18,20 @@ export type AppConfig = {
   operatorPrivateKey: string;
   npcTickMs: number;
   e2eApi: string;
+  enableApiDocs: boolean;
+  bodyLimit: number;
+  rateLimitMax: number;
+  rateLimitWindowMs: number;
+  trustProxy: boolean;
+  shutdownTimeoutMs: number;
+  readinessTimeoutMs: number;
+  chainEventSourceUrl: string | null;
+  chainStartBlock: string | null;
+  chainSourceRequired: boolean;
+  chainPollIntervalMs: number;
+  chainPageSize: number;
+  chainFetchTimeoutMs: number;
+  chainMaxRetries: number;
 };
 
 export class ConfigError extends Error {
@@ -183,6 +197,15 @@ function webOrigin(env: NodeJS.ProcessEnv, appEnv: AppEnv): string {
   return parsed.origin;
 }
 
+function canonicalUint(env: NodeJS.ProcessEnv, name: string): string | null {
+  const raw = env[name]?.trim();
+  if (!raw) return null;
+  if (!/^(0|[1-9][0-9]*)$/.test(raw)) {
+    throw new ConfigError(`${name} must be a canonical non-negative decimal string`);
+  }
+  return raw;
+}
+
 function appEnvironment(env: NodeJS.ProcessEnv): AppEnv {
   const raw =
     env.APP_ENV?.trim() ||
@@ -224,6 +247,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     throw new ConfigError("PGSSL must be require for staging and production");
   }
 
+  const chainRequiredRaw = env.CHAIN_SOURCE_REQUIRED?.trim();
+  const chainSourceRequired =
+    chainRequiredRaw === "1" ||
+    (chainRequiredRaw !== "0" && (appEnv === "staging" || appEnv === "production"));
+
   const rpcFallback =
     networkId === "mainnet" ? "https://rpc.mainnet.fastnear.com" : "https://rpc.testnet.fastnear.com";
 
@@ -243,7 +271,24 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     operatorPrivateKey: privateKey(env, "NEAR_OPERATOR_PRIVATE_KEY"),
     npcTickMs: integer(env, "NPC_TICK_MS", 30_000, 1_000, 3_600_000),
     e2eApi: url(env, "E2E_API", "http://localhost:8787").toString().replace(/\/+$/, ""),
+    enableApiDocs: env.ENABLE_API_DOCS === "1",
+    bodyLimit: integer(env, "BODY_LIMIT", 65_536, 1_024, 1_048_576),
+    rateLimitMax: integer(env, "RATE_LIMIT_MAX", 120, 1, 10_000),
+    rateLimitWindowMs: integer(env, "RATE_LIMIT_WINDOW_MS", 60_000, 1_000, 3_600_000),
+    trustProxy: env.TRUST_PROXY === "1",
+    shutdownTimeoutMs: integer(env, "SHUTDOWN_TIMEOUT_MS", 10_000, 1_000, 60_000),
+    readinessTimeoutMs: integer(env, "READINESS_TIMEOUT_MS", 2_000, 250, 10_000),
+    chainEventSourceUrl: optional(env, "CHAIN_EVENT_SOURCE_URL"),
+    chainStartBlock: canonicalUint(env, "CHAIN_START_BLOCK"),
+    chainSourceRequired,
+    chainPollIntervalMs: integer(env, "CHAIN_POLL_INTERVAL_MS", 15_000, 5_000, 600_000),
+    chainPageSize: integer(env, "CHAIN_PAGE_SIZE", 100, 1, 1_000),
+    chainFetchTimeoutMs: integer(env, "CHAIN_FETCH_TIMEOUT_MS", 5_000, 500, 60_000),
+    chainMaxRetries: integer(env, "CHAIN_MAX_RETRIES", 3, 0, 10),
   };
+  if (config.chainSourceRequired && !config.chainEventSourceUrl) {
+    throw new ConfigError("CHAIN_EVENT_SOURCE_URL is required for this environment");
+  }
 
   assertDemoConfigurationIsSafe(config);
 

@@ -16,6 +16,11 @@ function event(eventName: string, data: Record<string, unknown> = {}): ChainEven
         amount: "100",
         reference: "job:1",
         entity_id: "player:alice.testnet",
+        ...(eventName === "property_created"
+          ? { kind: "plot", district: "knowledge", x: 1, y: 1 }
+          : eventName === "business_created"
+            ? { name: "Cafe" }
+            : {}),
         ...data,
       },
     ],

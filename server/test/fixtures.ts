@@ -20,6 +20,7 @@ export const testEnv: NodeJS.ProcessEnv = {
   NEAR_OPERATOR_ACCOUNT: "quizcity.testnet",
   NEAR_OPERATOR_PRIVATE_KEY: TEST_PRIVATE_KEY,
   NPC_TICK_MS: "20000",
+  CHAIN_SOURCE_REQUIRED: "0",
   E2E_API: "http://localhost:8787",
 };
 
@@ -40,6 +41,20 @@ export function makeTestConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     operatorPrivateKey: TEST_PRIVATE_KEY,
     npcTickMs: 20_000,
     e2eApi: "http://localhost:8787",
+    enableApiDocs: false,
+    bodyLimit: 65_536,
+    rateLimitMax: 120,
+    rateLimitWindowMs: 60_000,
+    trustProxy: false,
+    shutdownTimeoutMs: 10_000,
+    readinessTimeoutMs: 2_000,
+    chainEventSourceUrl: null,
+    chainStartBlock: null,
+    chainSourceRequired: false,
+    chainPollIntervalMs: 15_000,
+    chainPageSize: 100,
+    chainFetchTimeoutMs: 5_000,
+    chainMaxRetries: 3,
     ...overrides,
   };
 }

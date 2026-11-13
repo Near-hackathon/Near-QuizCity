@@ -10,6 +10,7 @@ import {
   type Wallet,
 } from "./api";
 import { call, clearSession, loadSession, saveSession, view, type ChainPlayer, type Session } from "./chain";
+import { ensureAuth, logout as authLogout } from "./auth";
 import { BusinessPanel } from "./components/BusinessPanel";
 import { CityGrid, PropertyCard, money } from "./components/CityGrid";
 import { JobsPanel, QuizPanel } from "./components/JobsPanel";
@@ -62,6 +63,14 @@ export function App() {
   }, [session]);
 
   useEffect(() => {
+    if (!session) return;
+    api
+      .config()
+      .then((config) => ensureAuth(session, config.demoMode))
+      .catch((err: Error) => setNotice({ kind: "err", text: `sign-in failed: ${err.message}` }));
+  }, [session]);
+
+  useEffect(() => {
     refresh().catch((err: Error) => setNotice({ kind: "err", text: err.message }));
     const timer = setInterval(() => {
       refresh().catch(() => undefined);
@@ -101,6 +110,7 @@ export function App() {
   }
 
   function logout() {
+    void authLogout();
     clearSession();
     setSession(null);
     setPlayer(null);
@@ -113,7 +123,7 @@ export function App() {
     if (!session) return;
     void run(async () => {
       const tx = await call(session, "buy_property", { property_id: property.id });
-      await api.buyProperty(property.id, session.accountId, tx);
+      await api.buyProperty(property.id, tx);
       return tx;
     }, `Bought plot #${property.id}`);
   }
@@ -122,7 +132,7 @@ export function App() {
     if (!session) return;
     void run(async () => {
       const tx = await call(session, "create_business", { property_id: property.id, name });
-      await api.createBusiness(session.accountId, property.id, name, tx);
+      await api.createBusiness(property.id, name, tx);
       return tx;
     }, `Opened ${name}`);
   }
@@ -130,43 +140,53 @@ export function App() {
   function acceptJob(job: Job) {
     if (!me) return;
     void run(async () => {
-      await api.acceptJob(job.id, me);
+      await api.acceptJob(job.id);
       return null;
     }, `Accepted "${job.title}"`);
   }
 
   function completeJob(job: Job) {
     if (!me) return;
+    const success =
+      job.status === "accepted"
+        ? "Job submitted for operator verification"
+        : job.status === "payment_failed"
+          ? "Payment reconciled"
+          : `Job paid: ${job.payment} QC`;
     void run(async () => {
-      let current = job;
-      if (current.status === "accepted") {
-        current = await api.submitJob(job.id, me, "Delivered through the demo client");
+      if (job.status === "accepted") {
+        await api.submitJob(job.id, "Delivered through the demo client");
+        return null;
       }
-      if (current.status === "submitted") {
-        current = await api.verifyJob(job.id, "Verified in the demo");
-      }
-      if (current.status === "payment_failed") {
+      if (job.status === "payment_failed") {
         await api.retryJobPayment(job.id);
+        return null;
       }
-      const result = await api.completeJob(job.id, me);
+      if (job.status !== "verified") {
+        throw new Error("An operator must verify this job before payment");
+      }
+      const result = await api.completeJob(job.id);
       return result.txHash;
-    }, `Job paid: ${job.payment} QC`);
+    }, success);
   }
 
-  function payService(business: Business, amount: number) {
+  function payService(business: Business, amount: string) {
     if (!session) return;
-    void run(async () => {
-      const tx = await call(session, "pay_service", { business_id: business.id, amount: String(amount) });
-      await api.payService(business.id, session.accountId, amount, tx);
-      return tx;
-    }, `Paid ${amount} QC to ${business.name}`);
+    void run(
+      async () => {
+        const tx = await call(session, "pay_service", { business_id: business.id, amount });
+        await api.payService(business.id, amount, tx);
+        return tx;
+      },
+      `Paid ${money(amount)} QC to ${business.name}`,
+    );
   }
 
   function transferBusiness(business: Business, newOwner: string) {
     if (!session) return;
     void run(async () => {
       const tx = await call(session, "transfer_business", { business_id: business.id, new_owner: newOwner });
-      await api.transferBusiness(business.id, session.accountId, newOwner, tx);
+      await api.transferBusiness(business.id, newOwner, tx);
       return tx;
     }, `Transferred ${business.name} to ${newOwner}`);
   }
@@ -255,10 +275,8 @@ export function App() {
           <QuizPanel
             me={me}
             busy={busy}
-            start={async () => api.startQuiz("daily-quiz", session!.accountId)}
-            submit={async (attemptId, answers) =>
-              api.submitQuiz("daily-quiz", session!.accountId, attemptId, answers)
-            }
+            start={async () => api.startQuiz("daily-quiz")}
+            submit={async (attemptId, answers) => api.submitQuiz("daily-quiz", attemptId, answers)}
           />
 
           <JobsPanel jobs={jobs} me={me} busy={busy} onAccept={acceptJob} onComplete={completeJob} />

@@ -1,3 +1,5 @@
+import { QC_MAX } from "./amount.js";
+
 export const EVENT_STANDARD = "quizcity";
 export const EVENT_VERSION = "1.0.0";
 
@@ -9,7 +11,7 @@ export type ChainEvent = {
   /** Receipt/event identity and block context, attached by parseEvents. */
   receiptId?: string;
   eventIndex?: number;
-  blockHeight?: number;
+  blockHeight?: string;
   blockHash?: string;
   txHash?: string;
   chainTimestamp?: string;
@@ -35,15 +37,15 @@ function canonicalEvent(events: ChainEvent[], name: string): Record<string, unkn
   return matches[0].data[0];
 }
 
-function canonicalAmount(value: unknown, name: string): number {
-  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+function canonicalAmount(value: unknown, name: string): string {
+  if (typeof value !== "string" || !/^(0|[1-9]\d*)$/.test(value)) {
     throw new ReceiptError(`invalid ${name} amount`);
   }
-  const amount = Number(value);
-  if (!Number.isSafeInteger(amount) || amount <= 0) {
+  const amount = BigInt(value);
+  if (amount <= 0n || amount > QC_MAX) {
     throw new ReceiptError(`invalid ${name} amount`);
   }
-  return amount;
+  return value;
 }
 
 export function propertySaleReceipt(
@@ -51,7 +53,7 @@ export function propertySaleReceipt(
   buyer: string,
   propertyId: number,
   transferCount: number,
-): { seller: string; price: number } | null {
+): { seller: string; price: string } | null {
   const sale = canonicalEvent(events, "property_transferred");
   if (!sale) return null;
   const seller = sale.wallet_to;
@@ -79,7 +81,7 @@ export function propertySaleReceipt(
 export function legacyPropertySaleReceipt(
   events: ChainEvent[],
   buyer: string,
-): { seller: string; price: number } | null {
+): { seller: string; price: string } | null {
   const sales = events
     .filter((event) => event.event === "transfer")
     .flatMap((event) => event.data)
@@ -104,7 +106,7 @@ export function propertySaleFromReceipts(
   buyer: string,
   propertyId: number,
   transferCount: number,
-): { seller: string; price: number } | null {
+): { seller: string; price: string } | null {
   return (
     propertySaleReceipt(events, buyer, propertyId, transferCount) ?? legacyPropertySaleReceipt(events, buyer)
   );
@@ -115,7 +117,7 @@ export function servicePaymentReceipt(
   payer: string,
   treasury: string,
   businessId: number,
-): { amount: number } | null {
+): { amount: string } | null {
   const payment = canonicalEvent(events, "service_paid");
   if (!payment) return null;
   if (

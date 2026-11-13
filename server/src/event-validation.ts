@@ -192,7 +192,18 @@ export function validateEventData(
     case "wallet_transfer":
       validateEntity(event, entityId, walletTo as string);
       break;
-    case "property_created":
+    case "property_created": {
+      const id = requireInteger(data, "id", 1);
+      requireString(data, "kind");
+      requireString(data, "district");
+      requireInteger(data, "x", 0);
+      requireInteger(data, "y", 0);
+      requireString(data, "owner_wallet");
+      requireU128(data, "listing_price");
+      requireBoolean(data, "for_sale");
+      validateEntity(event, entityId, `property:${id}`);
+      break;
+    }
     case "property_listed": {
       const id = requireInteger(data, "id", 1);
       requireString(data, "owner_wallet");
@@ -224,6 +235,7 @@ export function validateEventData(
     }
     case "business_created": {
       const id = requireInteger(data, "id", 1);
+      const name = requireString(data, "name");
       const owner = requireString(data, "owner");
       const ownerWallet = requireString(data, "owner_wallet");
       requireInteger(data, "property_id", 1);
@@ -233,6 +245,7 @@ export function validateEventData(
         fail(`business_created owner_wallet must be player:${owner}`);
       }
       if (treasury !== `biz:${id}`) fail(`business_created treasury must be biz:${id}`);
+      if (name.length === 0) fail("business_created name is required");
       validateEntity(event, entityId, `business:${id}`);
       break;
     }

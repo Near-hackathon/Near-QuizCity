@@ -158,3 +158,9 @@ test("operator credentials are required", () => {
   const { NEAR_OPERATOR_PRIVATE_KEY: _key, ...withoutKey } = env();
   assert.throws(() => loadConfig(withoutKey), /NEAR_OPERATOR_PRIVATE_KEY is required/);
 });
+
+test("API documentation is opt-in outside local development", () => {
+  assert.equal(loadConfig(env()).enableApiDocs, false);
+  assert.equal(loadConfig(env({ ENABLE_API_DOCS: "1" })).enableApiDocs, true);
+  assert.equal(loadConfig(env({ ENABLE_API_DOCS: "0" })).enableApiDocs, false);
+});

@@ -80,13 +80,20 @@ export async function startQuizAttempt(
   },
 ): Promise<{ attemptId: string; questions: SnapshotQuestion[] }> {
   const now = params.now ?? new Date();
-  const windowMs = params.windowMs ?? QUIZ_WINDOW_MS;
-  const expiresAt = new Date(now.getTime() + windowMs);
   const rewardDay = now.toISOString().slice(0, 10);
 
   return sql.begin(async (transaction) => {
-    const [quiz] = await transaction`
-      select id from quizzes where id = ${params.quizId} and status = 'live'
+    const [quiz] = await transaction<
+      {
+        id: string;
+        question_count: number;
+        pass_score: number;
+        reward_amount: string;
+        attempt_duration_seconds: number;
+      }[]
+    >`
+      select id, question_count, pass_score, reward_amount, attempt_duration_seconds
+      from quizzes where id = ${params.quizId} and status = 'live'
     `;
     if (!quiz) throw new QuizError("quiz is not live", 404);
 
@@ -102,9 +109,18 @@ export async function startQuizAttempt(
       }[]
     >`
       select id, question, options, correct_index, category, difficulty, source
-      from quiz_questions where quiz_id = ${params.quizId} order by random()
+      from quiz_questions where quiz_id = ${params.quizId}
+      order by random() limit ${quiz.question_count}
     `;
     if (questions.length === 0) throw new QuizError("quiz has no questions");
+
+    const passScore = params.passScore ?? Number(quiz.pass_score);
+    if (passScore > questions.length) {
+      throw new QuizError("quiz does not have enough questions for its pass mark");
+    }
+    const windowMs = params.windowMs ?? Number(quiz.attempt_duration_seconds) * 1000;
+    const expiresAt = new Date(now.getTime() + windowMs);
+    const rewardAmount = String(params.rewardAmount ?? quiz.reward_amount);
 
     for (const question of questions) {
       assertValidSnapshotQuestion({
@@ -118,11 +134,11 @@ export async function startQuizAttempt(
     await transaction`
       insert into quiz_attempts (
         id, quiz_id, player_account, total, status, pass_score, reward_amount,
-        expires_at, reward_day, started_at
+        expires_at, reward_day, started_at, reward_state
       ) values (
         ${attemptId}, ${params.quizId}, ${params.accountId}, ${questions.length},
-        ${"started"}, ${params.passScore ?? QUIZ_PASS_MARK},
-        ${String(params.rewardAmount ?? QUIZ_REWARD)}, ${expiresAt}, ${rewardDay}, ${now}
+        ${"started"}, ${passScore}, ${rewardAmount}, ${expiresAt}, ${rewardDay}, ${now},
+        ${"none"}
       )
     `;
 

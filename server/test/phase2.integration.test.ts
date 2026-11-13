@@ -22,7 +22,10 @@ async function migrate(sql: Sql) {
 }
 
 async function seedQuiz(sql: Sql): Promise<void> {
-  await sql`insert into quizzes (id, title, status) values ('quiz-1', 'Snapshot Quiz', 'live')`;
+  await sql`
+    insert into quizzes (id, title, status, question_count, pass_score, reward_amount)
+    values ('quiz-1', 'Snapshot Quiz', 'live', 3, 3, '0')
+  `;
   const questions = [
     { id: "q1", question: "One?", options: ["a", "b"], correct: 0 },
     { id: "q2", question: "Two?", options: ["a", "b"], correct: 1 },
@@ -90,7 +93,10 @@ test("expired attempts are detected from the stored expiry", () => {
 test("a failure while inserting one snapshot rolls back the whole attempt", async () => {
   await withTestSchema(async ({ sql }) => {
     await migrate(sql);
-    await sql`insert into quizzes (id, title, status) values ('quiz-atomic', 'Atomic', 'live')`;
+    await sql`
+      insert into quizzes (id, title, status, question_count, pass_score, reward_amount)
+      values ('quiz-atomic', 'Atomic', 'live', 2, 0, '0')
+    `;
     for (const id of ["q-ok", "q-fail"]) {
       await sql`
         insert into quiz_questions (id, quiz_id, category, question, options, correct_index)
@@ -323,7 +329,7 @@ test("invalid quiz questions cannot be snapshotted", async () => {
       assert.equal(attempts.count, 0);
     }
 
-    await sql`insert into quizzes (id, title, status) values ('q-mixed', 'Mixed', 'live')`;
+    await sql`insert into quizzes (id, title, status, question_count, pass_score, reward_amount) values ('q-mixed', 'Mixed', 'live', 2, 0, '0')`;
     await sql`
       insert into quiz_questions (id, quiz_id, category, question, options, correct_index)
       values ('valid', 'q-mixed', 'test', 'Valid?', '["a","b"]'::jsonb, 0),

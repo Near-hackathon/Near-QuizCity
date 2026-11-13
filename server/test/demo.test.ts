@@ -44,7 +44,7 @@ function demoFile(): string {
 test("demo accounts are default-deny", async () => {
   const app = await buildPublicApp(makeTestConfig({ demoMode: false, demoAccountsFile: demoFile() }));
   try {
-    const res = await app.inject({ method: "GET", url: "/demo/accounts" });
+    const res = await app.inject({ method: "GET", url: "/v1/demo/accounts" });
     assert.equal(res.statusCode, 404);
   } finally {
     await app.close();
@@ -54,7 +54,7 @@ test("demo accounts are default-deny", async () => {
 test("demo mode serves only approved accounts and never operator credentials", async () => {
   const app = await buildPublicApp(makeTestConfig({ demoMode: true, demoAccountsFile: demoFile() }));
   try {
-    const res = await app.inject({ method: "GET", url: "/demo/accounts" });
+    const res = await app.inject({ method: "GET", url: "/v1/demo/accounts" });
     assert.equal(res.statusCode, 200);
     const body = res.json() as { accounts: { accountId: string; secretKey: string }[] };
     assert.deepEqual(
@@ -73,7 +73,7 @@ test("an unsafe AppConfig override cannot serve secrets", async () => {
     makeTestConfig({ demoMode: true, appEnv: "staging", host: "0.0.0.0", demoAccountsFile: file }),
   );
   try {
-    const res = await app.inject({ method: "GET", url: "/demo/accounts" });
+    const res = await app.inject({ method: "GET", url: "/v1/demo/accounts" });
     assert.equal(res.statusCode, 503);
     assert.ok(!res.body.includes("ed25519:"));
   } finally {
@@ -89,7 +89,7 @@ test("an unsafe AppConfig override cannot serve secrets", async () => {
 test("config endpoint exposes no secrets", async () => {
   const app = await buildPublicApp(makeTestConfig({ demoMode: true, demoAccountsFile: demoFile() }));
   try {
-    const res = await app.inject({ method: "GET", url: "/config" });
+    const res = await app.inject({ method: "GET", url: "/v1/config" });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.json(), {
       demoMode: true,

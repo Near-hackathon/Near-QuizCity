@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import type { Sql } from "postgres";
 import { insertLedgerEntries } from "../src/ledger.js";
+import { registerErrorHandler } from "../src/errors.js";
+import { ajvOptions } from "../src/fastify-options.js";
 import { loadMigrations, postgresMigrationStore, runMigrations } from "../src/migrations.js";
 import { startQuizAttempt } from "../src/quiz.js";
 import { setMirroredBalance } from "../src/sync.js";
@@ -22,10 +24,23 @@ function event(name: string, data: Record<string, unknown>, overrides: Record<st
     standard: "quizcity",
     version: "1.0.0",
     event: name,
-    data: [{ seq: 1, reference: null, entity_id: "wallet", amount: "0", ...data }],
+    data: [
+      {
+        seq: 1,
+        reference: null,
+        entity_id: "wallet",
+        amount: "0",
+        ...(name === "property_created"
+          ? { kind: "plot", district: "knowledge", x: 1, y: 1 }
+          : name === "business_created"
+            ? { name: "Cafe" }
+            : {}),
+        ...data,
+      },
+    ],
     receiptId: `receipt-${name}`,
     eventIndex: 0,
-    blockHeight: 10,
+    blockHeight: "10",
     blockHash: "block-hash",
     txHash: "tx-hash",
     chainTimestamp: "2026-11-12T00:00:00.000Z",
@@ -38,11 +53,11 @@ function deps(db: Sql, overrides: Partial<RouteDeps> = {}): RouteDeps {
     db,
     viewContract: async () => null,
     viewAllBusinesses: async () => [],
-    creditReward: async () => ({ txHash: "reward-tx", outcome: {} }),
-    payJob: async () => ({ txHash: "job-tx", outcome: {} }),
+    creditReward: async () => ({ kind: "confirmed", txHash: "reward-tx", outcome: {} }),
+    payJob: async () => ({ kind: "confirmed", txHash: "job-tx", outcome: {} }),
     readChainBalance: async () => "0",
     setMirroredBalance,
-    getMirroredBalance: async () => 0,
+    getMirroredBalance: async () => "0",
     verifyExpectedFunctionCall: async () => ({ txHash: "tx-hash", outcome: {}, events: [] }),
     verifyOperatorOutcome: async () => ({ txHash: "tx-hash", outcome: {}, events: [] }),
     insertLedgerEntries,
@@ -50,9 +65,27 @@ function deps(db: Sql, overrides: Partial<RouteDeps> = {}): RouteDeps {
   };
 }
 
-async function buildApp(db: Sql, overrides: Partial<RouteDeps> = {}) {
-  const app = Fastify();
-  registerRoutes(app, deps(db, overrides));
+async function buildApp(
+  db: Sql,
+  overrides: Partial<RouteDeps> = {},
+  roles = ["player", "operator", "admin"],
+) {
+  const app = Fastify({
+    genReqId: () => `req-test-${Math.random().toString(16).slice(2)}`,
+    ajv: { customOptions: ajvOptions },
+  });
+  app.decorateRequest("auth", null);
+  app.addHook("preValidation", async (request) => {
+    request.auth = {
+      accountId: "alice.testnet",
+      roles,
+      sessionTokenHash: "test-session",
+      csrfHash: "test-csrf",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+  });
+  registerErrorHandler(app);
+  await app.register(async (v1) => registerRoutes(v1, deps(db, overrides)), { prefix: "/v1" });
   await app.ready();
   return app;
 }
@@ -90,8 +123,8 @@ test("registration records only the expected player_registered event", async () 
     });
     const response = await app.inject({
       method: "POST",
-      url: "/players/register",
-      payload: { accountId: "alice.testnet", username: "alice", txHash: "x".repeat(44) },
+      url: "/v1/players/register",
+      payload: { username: "alice", txHash: "x".repeat(44) },
     });
     assert.equal(response.statusCode, 200, response.body);
     const [player] = await sql`select username from players`;
@@ -125,8 +158,8 @@ test("starter claim records exactly one issuance event", async () => {
     });
     const response = await app.inject({
       method: "POST",
-      url: "/players/claim",
-      payload: { accountId: "alice.testnet", txHash: "x".repeat(44) },
+      url: "/v1/players/claim",
+      payload: { txHash: "x".repeat(44) },
     });
     assert.equal(response.statusCode, 200, response.body);
     const ledger =
@@ -191,8 +224,8 @@ test("business creation records permit burn and business creation atomically", a
     });
     const response = await app.inject({
       method: "POST",
-      url: "/businesses",
-      payload: { accountId: "alice.testnet", propertyId: 3, name: "Cafe", txHash: "x".repeat(44) },
+      url: "/v1/businesses",
+      payload: { propertyId: 3, name: "Cafe", txHash: "x".repeat(44) },
     });
     assert.equal(response.statusCode, 200, response.body);
     const ledger = await sql`select event_name from transactions order by event_index`;
@@ -239,8 +272,8 @@ test("property purchase records buyer to seller", async () => {
     });
     const response = await app.inject({
       method: "POST",
-      url: "/properties/1/buy",
-      payload: { accountId: "alice.testnet", txHash: "x".repeat(44) },
+      url: "/v1/properties/1/buy",
+      payload: { txHash: "x".repeat(44) },
     });
     assert.equal(response.statusCode, 200, response.body);
     const [row] =
@@ -248,6 +281,14 @@ test("property purchase records buyer to seller", async () => {
     assert.equal(row.wallet_from, buyer);
     assert.equal(row.wallet_to, seller);
     assert.equal(row.amount, "300");
+    const [history] = await sql`
+      select asset_type, asset_id, previous_owner, new_owner
+      from asset_ownership_history
+    `;
+    assert.equal(history.asset_type, "property");
+    assert.equal(history.asset_id, "1");
+    assert.equal(history.previous_owner, seller);
+    assert.equal(history.new_owner, buyer);
     await app.close();
   });
 });
@@ -280,8 +321,8 @@ test("service payment records payer to treasury", async () => {
     });
     const response = await app.inject({
       method: "POST",
-      url: "/businesses/1/pay",
-      payload: { accountId: "alice.testnet", amount: 20, txHash: "x".repeat(44) },
+      url: "/v1/businesses/1/pay",
+      payload: { amount: "20", txHash: "x".repeat(44) },
     });
     assert.equal(response.statusCode, 200, response.body);
     const [row] =
@@ -308,14 +349,14 @@ test("job payment records employer to employee exactly once", async () => {
       entity_id: employee,
     });
     const app = await buildApp(sql, {
-      payJob: async () => ({ txHash: "job-tx", outcome: {} }),
+      payJob: async () => ({ kind: "confirmed", txHash: "job-tx", outcome: {} }),
       verifyOperatorOutcome: async () => ({ txHash: "job-tx", outcome: {}, events: [reward] }),
       readChainBalance: async () => "100",
     });
     const response = await app.inject({
       method: "POST",
-      url: "/jobs/job-1/complete",
-      payload: { accountId: "alice.testnet" },
+      url: "/v1/jobs/job-1/complete",
+      payload: {},
     });
     assert.equal(response.statusCode, 200, response.body);
     const [row] =
@@ -350,13 +391,15 @@ test("replaying the same verified event is idempotent", async () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const response = await app.inject({
         method: "POST",
-        url: "/players/claim",
-        payload: { accountId: "alice.testnet", txHash: "x".repeat(44) },
+        url: "/v1/players/claim",
+        payload: { txHash: "x".repeat(44) },
       });
       assert.equal(response.statusCode, 200, response.body);
     }
     const [count] = await sql`select count(*)::int as count from transactions`;
     assert.equal(count.count, 1);
+    const [consumptions] = await sql`select count(*)::int as count from transaction_consumptions`;
+    assert.equal(consumptions.count, 1);
     await app.close();
   });
 });
@@ -386,15 +429,15 @@ test("reusing an event identity with different content fails loudly", async () =
     });
     const first = await app.inject({
       method: "POST",
-      url: "/players/claim",
-      payload: { accountId: "alice.testnet", txHash: "x".repeat(44) },
+      url: "/v1/players/claim",
+      payload: { txHash: "x".repeat(44) },
     });
     assert.equal(first.statusCode, 200, first.body);
     amount = "501";
     const second = await app.inject({
       method: "POST",
-      url: "/players/claim",
-      payload: { accountId: "alice.testnet", txHash: "x".repeat(44) },
+      url: "/v1/players/claim",
+      payload: { txHash: "x".repeat(44) },
     });
     assert.equal(second.statusCode, 500);
     const [row] = await sql`select amount::text as amount from transactions`;
@@ -413,8 +456,8 @@ test("an unrelated successful transaction cannot satisfy a route", async () => {
     });
     const response = await app.inject({
       method: "POST",
-      url: "/properties/1/buy",
-      payload: { accountId: "alice.testnet", txHash: "x".repeat(44) },
+      url: "/v1/properties/1/buy",
+      payload: { txHash: "x".repeat(44) },
     });
     assert.ok(response.statusCode >= 400);
     const [count] = await sql`select count(*)::int as count from transactions`;
@@ -477,14 +520,16 @@ test("read-model changes roll back when ledger persistence fails", async () => {
     });
     const response = await app.inject({
       method: "POST",
-      url: "/businesses",
-      payload: { accountId: "alice.testnet", propertyId: 3, name: "Cafe", txHash: "x".repeat(44) },
+      url: "/v1/businesses",
+      payload: { propertyId: 3, name: "Cafe", txHash: "x".repeat(44) },
     });
     assert.equal(response.statusCode, 500);
     const [businesses] = await sql`select count(*)::int as count from businesses`;
     const [ledger] = await sql`select count(*)::int as count from transactions`;
+    const [consumptions] = await sql`select count(*)::int as count from transaction_consumptions`;
     assert.equal(businesses.count, 0);
     assert.equal(ledger.count, 0);
+    assert.equal(consumptions.count, 0);
     await app.close();
   });
 });
@@ -516,7 +561,7 @@ test("twenty concurrent complete requests produce one chain call and one ledger 
       payJob: async () => {
         payJobCalls += 1;
         await new Promise((resolve) => setTimeout(resolve, 50));
-        return { txHash: "job-tx", outcome: {} };
+        return { kind: "confirmed", txHash: "job-tx", outcome: {} };
       },
       verifyOperatorOutcome: async () => ({
         txHash: "job-tx",
@@ -530,8 +575,8 @@ test("twenty concurrent complete requests produce one chain call and one ledger 
       Array.from({ length: 20 }, () =>
         app.inject({
           method: "POST",
-          url: "/jobs/job-1/complete",
-          payload: { accountId: "alice.testnet" },
+          url: "/v1/jobs/job-1/complete",
+          payload: {},
         }),
       ),
     );
@@ -580,14 +625,14 @@ test("open, submitted, cancelled, and failed jobs cannot enter payment pending",
     const app = await buildApp(sql, {
       payJob: async () => {
         payJobCalls += 1;
-        return { txHash: "job-tx", outcome: {} };
+        return { kind: "confirmed", txHash: "job-tx", outcome: {} };
       },
     });
     for (const status of ["open", "submitted", "cancelled", "payment_failed"]) {
       const response = await app.inject({
         method: "POST",
-        url: `/jobs/job-${status}/complete`,
-        payload: { accountId: "alice.testnet" },
+        url: `/v1/jobs/job-${status}/complete`,
+        payload: {},
       });
       assert.equal(response.statusCode, 409, `${status}: ${response.body}`);
     }
@@ -607,7 +652,7 @@ test("chain success plus local failure can be reconciled without paying twice", 
     const failing = await buildApp(sql, {
       payJob: async () => {
         payJobCalls += 1;
-        return { txHash: "job-tx", outcome: {} };
+        return { kind: "confirmed", txHash: "job-tx", outcome: {} };
       },
       verifyOperatorOutcome: async () => ({ txHash: "job-tx", outcome: {}, events: [reward] }),
       readChainBalance: async () => "100",
@@ -617,14 +662,14 @@ test("chain success plus local failure can be reconciled without paying twice", 
     });
     const failed = await failing.inject({
       method: "POST",
-      url: "/jobs/job-1/complete",
-      payload: { accountId: "alice.testnet" },
+      url: "/v1/jobs/job-1/complete",
+      payload: {},
     });
     assert.equal(failed.statusCode, 502);
     const [afterFailure] = await sql`
       select status, chain_tx, last_error from jobs where id = 'job-1'
     `;
-    assert.equal(afterFailure.status, "payment_failed");
+    assert.equal(afterFailure.status, "payment_unknown");
     assert.equal(afterFailure.chain_tx, "job-tx");
     assert.match(afterFailure.last_error, /database unavailable/);
     await failing.close();
@@ -639,7 +684,7 @@ test("chain success plus local failure can be reconciled without paying twice", 
     });
     const reconciled = await reconciling.inject({
       method: "POST",
-      url: "/jobs/job-1/retry-payment",
+      url: "/v1/jobs/job-1/retry-payment",
       payload: {},
     });
     assert.equal(reconciled.statusCode, 200, reconciled.body);
@@ -654,7 +699,7 @@ test("chain success plus local failure can be reconciled without paying twice", 
 
     const repeated = await reconciling.inject({
       method: "POST",
-      url: "/jobs/job-1/retry-payment",
+      url: "/v1/jobs/job-1/retry-payment",
       payload: {},
     });
     assert.equal(repeated.statusCode, 200);
@@ -689,7 +734,7 @@ test("a failed first hash write falls through to atomic job finalization", async
     const app = await buildApp(sql, {
       payJob: async () => {
         payJobCalls += 1;
-        return { txHash: "job-tx", outcome: {} };
+        return { kind: "confirmed", txHash: "job-tx", outcome: {} };
       },
       verifyOperatorOutcome: async () => ({
         txHash: "job-tx",
@@ -700,8 +745,8 @@ test("a failed first hash write falls through to atomic job finalization", async
     });
     const response = await app.inject({
       method: "POST",
-      url: "/jobs/job-1/complete",
-      payload: { accountId: "alice.testnet" },
+      url: "/v1/jobs/job-1/complete",
+      payload: {},
     });
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(payJobCalls, 1);
@@ -735,7 +780,7 @@ test("a pending job with a stored hash can enter explicit reconciliation", async
     });
     const response = await app.inject({
       method: "POST",
-      url: "/jobs/job-1/retry-payment",
+      url: "/v1/jobs/job-1/retry-payment",
       payload: {},
     });
     assert.equal(response.statusCode, 200, response.body);
@@ -755,7 +800,7 @@ test("processed reference without a verifiable event does not mark paid", async 
     });
     const response = await app.inject({
       method: "POST",
-      url: "/jobs/job-1/retry-payment",
+      url: "/v1/jobs/job-1/retry-payment",
       payload: {},
     });
     assert.equal(response.statusCode, 409);
@@ -774,20 +819,54 @@ test("known rejection stores safe failure text and unknown timeout does not retr
     const app = await buildApp(sql, {
       payJob: async () => {
         calls += 1;
-        throw new Error("operator timeout: insufficient allowance");
+        return {
+          kind: "rejected" as const,
+          code: "FINAL_REJECTION",
+          safeMessage: "insufficient allowance",
+        };
       },
     });
     const response = await app.inject({
       method: "POST",
-      url: "/jobs/job-1/complete",
-      payload: { accountId: "alice.testnet" },
+      url: "/v1/jobs/job-1/complete",
+      payload: {},
     });
     assert.equal(response.statusCode, 409);
     assert.equal(calls, 1);
     const [job] = await sql`select status, last_error, chain_tx from jobs where id = 'job-1'`;
     assert.equal(job.status, "payment_failed");
-    assert.match(job.last_error, /operator timeout/);
+    assert.match(job.last_error, /insufficient allowance/);
     assert.equal(job.chain_tx, null);
+    await app.close();
+  });
+});
+
+test("unknown payout outcomes remain pending without a second operator call", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await migrated(sql);
+    await seedVerifiedJob(sql);
+    let calls = 0;
+    const app = await buildApp(sql, {
+      payJob: async () => {
+        calls += 1;
+        return { kind: "unknown" as const, code: "CHAIN_TIMEOUT" as const };
+      },
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/jobs/job-1/complete",
+      payload: {},
+    });
+    assert.equal(response.statusCode, 502);
+    assert.equal(calls, 1);
+    const [job] = await sql`
+      select status, chain_tx, payment_next_check_at, payment_error_code
+      from jobs where id = 'job-1'
+    `;
+    assert.equal(job.status, "payment_unknown");
+    assert.equal(job.chain_tx, null);
+    assert.ok(job.payment_next_check_at);
+    assert.equal(job.payment_error_code, "CHAIN_TIMEOUT");
     await app.close();
   });
 });
@@ -801,7 +880,7 @@ test("retrying a definitely absent reference keeps the same reference", async ()
     });
     const response = await app.inject({
       method: "POST",
-      url: "/jobs/job-1/retry-payment",
+      url: "/v1/jobs/job-1/retry-payment",
       payload: {},
     });
     assert.equal(response.statusCode, 200, response.body);
@@ -814,7 +893,15 @@ test("retrying a definitely absent reference keeps the same reference", async ()
 });
 
 async function seedRouteQuiz(sql: Sql, id = "quiz-route", count = 3) {
-  await sql`insert into quizzes (id, title, status) values (${id}, ${"Route Quiz"}, ${"live"})`;
+  await sql`
+    insert into quizzes (
+      id, title, status, question_count, pass_score, reward_amount,
+      attempt_duration_seconds, reward_pool
+    ) values (
+      ${id}, ${"Route Quiz"}, ${"live"}, ${count}, ${count >= 6 ? 6 : count},
+      ${count >= 6 ? "25" : "0"}, 600, ${count >= 6 ? "1000" : "0"}
+    )
+  `;
   for (let index = 0; index < count; index += 1) {
     await sql`
       insert into quiz_questions (id, quiz_id, category, question, options, correct_index)
@@ -841,8 +928,8 @@ test("starting a quiz returns snapshots without correct answers", async () => {
     const app = await buildApp(sql);
     const response = await app.inject({
       method: "POST",
-      url: "/quizzes/quiz-route/start",
-      payload: { accountId: "alice.testnet" },
+      url: "/v1/quizzes/quiz-route/start",
+      payload: {},
     });
     assert.equal(response.statusCode, 200, response.body);
     const body = response.json();
@@ -862,8 +949,8 @@ test("editing live questions after start does not change submission score", asyn
     const started = (
       await app.inject({
         method: "POST",
-        url: "/quizzes/quiz-route/start",
-        payload: { accountId: "alice.testnet" },
+        url: "/v1/quizzes/quiz-route/start",
+        payload: {},
       })
     ).json();
     await sql`update quiz_questions set correct_index = 1, question = 'changed' where quiz_id = 'quiz-route'`;
@@ -875,8 +962,8 @@ test("editing live questions after start does not change submission score", asyn
     const answers = Object.fromEntries(started.questions.map((question: { id: string }) => [question.id, 0]));
     const response = await app.inject({
       method: "POST",
-      url: "/quizzes/quiz-route/submit",
-      payload: { accountId: "alice.testnet", attemptId: started.attemptId, answers },
+      url: "/v1/quizzes/quiz-route/submit",
+      payload: { attemptId: started.attemptId, answers },
     });
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().score, 3);
@@ -895,16 +982,16 @@ test("missing answers count incorrect and extra answers do not increase the scor
       (
         await app.inject({
           method: "POST",
-          url: "/quizzes/quiz-route/start",
-          payload: { accountId: "alice.testnet" },
+          url: "/v1/quizzes/quiz-route/start",
+          payload: {},
         })
       ).json();
 
     const missing = await start();
     const missingResponse = await app.inject({
       method: "POST",
-      url: "/quizzes/quiz-route/submit",
-      payload: { accountId: "alice.testnet", attemptId: missing.attemptId, answers: {} },
+      url: "/v1/quizzes/quiz-route/submit",
+      payload: { attemptId: missing.attemptId, answers: {} },
     });
     assert.equal(missingResponse.json().score, 0);
 
@@ -912,9 +999,8 @@ test("missing answers count incorrect and extra answers do not increase the scor
     const answers = Object.fromEntries(extra.questions.map((question: { id: string }) => [question.id, 0]));
     const extraResponse = await app.inject({
       method: "POST",
-      url: "/quizzes/quiz-route/submit",
+      url: "/v1/quizzes/quiz-route/submit",
       payload: {
-        accountId: "alice.testnet",
         attemptId: extra.attemptId,
         answers: { ...answers, unknown: 0 },
       },
@@ -937,8 +1023,8 @@ test("expired attempts become expired and create no reward claim", async () => {
     const app = await buildApp(sql);
     const response = await app.inject({
       method: "POST",
-      url: "/quizzes/quiz-route/submit",
-      payload: { accountId: "alice.testnet", attemptId: started.attemptId, answers: {} },
+      url: "/v1/quizzes/quiz-route/submit",
+      payload: { attemptId: started.attemptId, answers: {} },
     });
     assert.equal(response.statusCode, 410);
     const [attempt] = await sql`select status from quiz_attempts where id = ${started.attemptId}`;
@@ -957,17 +1043,16 @@ test("repeated quiz submission returns the stored result", async () => {
     const started = (
       await app.inject({
         method: "POST",
-        url: "/quizzes/quiz-route/start",
-        payload: { accountId: "alice.testnet" },
+        url: "/v1/quizzes/quiz-route/start",
+        payload: {},
       })
     ).json();
     const payload = {
-      accountId: "alice.testnet",
       attemptId: started.attemptId,
       answers: {},
     };
-    const first = await app.inject({ method: "POST", url: "/quizzes/quiz-route/submit", payload });
-    const second = await app.inject({ method: "POST", url: "/quizzes/quiz-route/submit", payload });
+    const first = await app.inject({ method: "POST", url: "/v1/quizzes/quiz-route/submit", payload });
+    const second = await app.inject({ method: "POST", url: "/v1/quizzes/quiz-route/submit", payload });
     assert.equal(first.json().score, 0);
     assert.equal(second.json().alreadySubmitted, true);
     assert.equal(second.json().score, 0);
@@ -984,7 +1069,7 @@ test("two qualifying attempts on one day create one reward claim", async () => {
     const app = await buildApp(sql, {
       creditReward: async () => {
         rewardCalls += 1;
-        return { txHash: "reward-tx", outcome: {} };
+        return { kind: "confirmed", txHash: "reward-tx", outcome: {} };
       },
       verifyOperatorOutcome: async (_outcome, txHash, expectation) => ({
         txHash,
@@ -997,16 +1082,15 @@ test("two qualifying attempts on one day create one reward claim", async () => {
       (
         await app.inject({
           method: "POST",
-          url: "/quizzes/quiz-route/start",
-          payload: { accountId: "alice.testnet" },
+          url: "/v1/quizzes/quiz-route/start",
+          payload: {},
         })
       ).json();
     const submit = async (attemptId: string, questions: { id: string }[]) =>
       app.inject({
         method: "POST",
-        url: "/quizzes/quiz-route/submit",
+        url: "/v1/quizzes/quiz-route/submit",
         payload: {
-          accountId: "alice.testnet",
           attemptId,
           answers: Object.fromEntries(questions.map((question) => [question.id, 0])),
         },
@@ -1039,7 +1123,7 @@ test("twenty concurrent submissions produce one reward call and one event", asyn
       creditReward: async () => {
         rewardCalls += 1;
         await new Promise((resolve) => setTimeout(resolve, 50));
-        return { txHash: "reward-tx", outcome: {} };
+        return { kind: "confirmed", txHash: "reward-tx", outcome: {} };
       },
       verifyOperatorOutcome: async (_outcome, txHash, expectation) => ({
         txHash,
@@ -1051,18 +1135,17 @@ test("twenty concurrent submissions produce one reward call and one event", asyn
     const started = (
       await app.inject({
         method: "POST",
-        url: "/quizzes/quiz-route/start",
-        payload: { accountId: "alice.testnet" },
+        url: "/v1/quizzes/quiz-route/start",
+        payload: {},
       })
     ).json();
     const payload = {
-      accountId: "alice.testnet",
       attemptId: started.attemptId,
       answers: Object.fromEntries(started.questions.map((question: { id: string }) => [question.id, 0])),
     };
     const responses = await Promise.all(
       Array.from({ length: 20 }, () =>
-        app.inject({ method: "POST", url: "/quizzes/quiz-route/submit", payload }),
+        app.inject({ method: "POST", url: "/v1/quizzes/quiz-route/submit", payload }),
       ),
     );
     assert.ok(responses.every((response) => response.statusCode === 200));
@@ -1091,7 +1174,7 @@ test("a local failure after a chain reward leaves a recoverable failed attempt",
     const app = await buildApp(sql, {
       creditReward: async () => {
         rewardCalls += 1;
-        return { txHash: "reward-tx", outcome: {} };
+        return { kind: "confirmed", txHash: "reward-tx", outcome: {} };
       },
       verifyOperatorOutcome: async (_outcome, txHash, expectation) => ({
         txHash,
@@ -1106,30 +1189,181 @@ test("a local failure after a chain reward leaves a recoverable failed attempt",
     const started = (
       await app.inject({
         method: "POST",
-        url: "/quizzes/quiz-route/start",
-        payload: { accountId: "alice.testnet" },
+        url: "/v1/quizzes/quiz-route/start",
+        payload: {},
       })
     ).json();
     const payload = {
-      accountId: "alice.testnet",
       attemptId: started.attemptId,
       answers: Object.fromEntries(started.questions.map((question: { id: string }) => [question.id, 0])),
     };
-    const response = await app.inject({ method: "POST", url: "/quizzes/quiz-route/submit", payload });
+    const response = await app.inject({ method: "POST", url: "/v1/quizzes/quiz-route/submit", payload });
     assert.equal(response.statusCode, 502);
     const [attempt] = await sql`
-      select status, reward_tx, last_error from quiz_attempts where id = ${started.attemptId}
+      select status, reward_state, reward_tx, last_error from quiz_attempts where id = ${started.attemptId}
     `;
-    assert.equal(attempt.status, "failed");
+    assert.equal(attempt.status, "reward_pending");
+    assert.equal(attempt.reward_state, "unknown");
     assert.equal(attempt.reward_tx, "reward-tx");
     assert.match(attempt.last_error, /ledger unavailable/);
     const [claim] = await sql`select status from quiz_reward_claims`;
-    assert.equal(claim.status, "failed");
+    assert.equal(claim.status, "reserved");
 
-    const replay = await app.inject({ method: "POST", url: "/quizzes/quiz-route/submit", payload });
+    const replay = await app.inject({ method: "POST", url: "/v1/quizzes/quiz-route/submit", payload });
     assert.equal(replay.statusCode, 200);
     assert.equal(replay.json().alreadySubmitted, true);
     assert.equal(rewardCalls, 1);
     await app.close();
+  });
+});
+
+test("a transaction cannot be reused for a different command or entity", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await migrated(sql);
+    const txHash = "x".repeat(44);
+    const starter = event("starter_allowance", {
+      wallet_from: null,
+      wallet_to: "player:alice.testnet",
+      amount: "500",
+      reference: "starter:alice.testnet",
+      entity_id: "player:alice.testnet",
+      account: "alice.testnet",
+    });
+    const sale = event("property_transferred", {
+      wallet_from: "player:alice.testnet",
+      wallet_to: "player:bob.testnet",
+      amount: "300",
+      reference: "property:1:1",
+      entity_id: "property:1",
+      id: 1,
+      previous_owner: "player:bob.testnet",
+      new_owner: "player:alice.testnet",
+      transfer_count: 1,
+    });
+    const app = await buildApp(sql, {
+      viewContract: async (method) => {
+        if (method === "get_player") {
+          return { username: "alice", starter_claimed: true } as never;
+        }
+        if (method === "get_property") {
+          return {
+            id: 1,
+            kind: "plot",
+            district: "knowledge",
+            x: 1,
+            y: 1,
+            owner: "player:alice.testnet",
+            price: "0",
+            for_sale: false,
+            transfer_count: 1,
+          } as never;
+        }
+        return null as never;
+      },
+      readChainBalance: async () => "500",
+      verifyExpectedFunctionCall: async (_txHash, expectation) => ({
+        txHash,
+        outcome: {},
+        events: [expectation.method === "claim_starter" ? starter : sale],
+      }),
+    });
+
+    const claim = await app.inject({
+      method: "POST",
+      url: "/v1/players/claim",
+      payload: { txHash },
+    });
+    assert.equal(claim.statusCode, 200, claim.body);
+
+    const reuse = await app.inject({
+      method: "POST",
+      url: "/v1/properties/1/buy",
+      payload: { txHash },
+    });
+    assert.equal(reuse.statusCode, 409, reuse.body);
+    assert.equal(reuse.json().error.code, "TX_ALREADY_CONSUMED");
+    const [properties] = await sql`select count(*)::int as count from properties`;
+    const [consumptions] = await sql`select count(*)::int as count from transaction_consumptions`;
+    assert.equal(properties.count, 0);
+    assert.equal(consumptions.count, 1);
+    await app.close();
+  });
+});
+
+test("an exhausted quiz reward pool issues no reward", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await migrated(sql);
+    await seedRouteQuiz(sql, "quiz-route", 6);
+    await sql`update quizzes set reward_pool = 0 where id = 'quiz-route'`;
+    const app = await buildApp(sql, {
+      creditReward: async () => {
+        throw new Error("should not be called");
+      },
+    });
+    const started = (
+      await app.inject({
+        method: "POST",
+        url: "/v1/quizzes/quiz-route/start",
+        payload: {},
+      })
+    ).json();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/quizzes/quiz-route/submit",
+      payload: {
+        attemptId: started.attemptId,
+        answers: Object.fromEntries(started.questions.map((question: { id: string }) => [question.id, 0])),
+      },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json().reward, "0");
+    assert.equal(response.json().status, "submitted");
+    const [claims] = await sql`select count(*)::int as count from quiz_reward_claims`;
+    assert.equal(claims.count, 0);
+    const [pool] = await sql`
+      select reward_reserved::text as reserved, reward_paid::text as paid from quizzes
+    `;
+    assert.equal(pool.reserved, "0");
+    assert.equal(pool.paid, "0");
+    await app.close();
+  });
+});
+
+test("retry-payment requires an operator or admin role", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await migrated(sql);
+    await seedVerifiedJob(sql, "payment_failed");
+    let providerCalls = 0;
+    const playerApp = await buildApp(
+      sql,
+      {
+        viewContract: async () => {
+          providerCalls += 1;
+          return false as never;
+        },
+      },
+      ["player"],
+    );
+    const forbidden = await playerApp.inject({
+      method: "POST",
+      url: "/v1/jobs/job-1/retry-payment",
+      payload: {},
+    });
+    assert.equal(forbidden.statusCode, 403);
+    assert.equal(forbidden.json().error.code, "FORBIDDEN");
+    assert.equal(providerCalls, 0);
+    const [unchanged] = await sql`select status from jobs where id = 'job-1'`;
+    assert.equal(unchanged.status, "payment_failed");
+    await playerApp.close();
+
+    const operatorApp = await buildApp(sql, { viewContract: async () => false as never }, ["operator"]);
+    const allowed = await operatorApp.inject({
+      method: "POST",
+      url: "/v1/jobs/job-1/retry-payment",
+      payload: {},
+    });
+    assert.equal(allowed.statusCode, 200, allowed.body);
+    assert.equal(allowed.json().retryAllowed, true);
+    await operatorApp.close();
   });
 });

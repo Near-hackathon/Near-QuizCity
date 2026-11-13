@@ -6,7 +6,7 @@ type Props = {
   businesses: Business[];
   me: string | null;
   busy: boolean;
-  onPay: (business: Business, amount: number) => void;
+  onPay: (business: Business, amount: string) => void;
   onTransfer: (business: Business, newOwner: string) => void;
 };
 
@@ -38,7 +38,7 @@ type CardProps = {
   business: Business;
   me: string | null;
   busy: boolean;
-  onPay: (business: Business, amount: number) => void;
+  onPay: (business: Business, amount: string) => void;
   onTransfer: (business: Business, newOwner: string) => void;
 };
 
@@ -62,7 +62,7 @@ function BusinessCard({ business, me, busy, onPay, onTransfer }: CardProps) {
       </dl>
 
       <div className="row">
-        <button className="btn primary" disabled={busy || !me || mine} onClick={() => onPay(business, 20)}>
+        <button className="btn primary" disabled={busy || !me || mine} onClick={() => onPay(business, "20")}>
           {mine ? "This is your venue" : me ? "Buy quiz ticket · 20 QC" : "Sign in to buy"}
         </button>
       </div>

@@ -18,7 +18,7 @@ export type LedgerEntry = {
   reference: string | null;
   entityType: string | null;
   entityId: string | null;
-  blockHeight: number | null;
+  blockHeight: string | null;
   blockHash: string | null;
   chainTimestamp: string | null;
   payload: unknown;
@@ -126,6 +126,9 @@ function validateEntry(entry: LedgerEntry): void {
   if (!/^(0|[1-9]\d*)$/.test(entry.amount) || BigInt(entry.amount) > U128_MAX) {
     throw new LedgerConflictError("ledger amount is not a valid U128 string");
   }
+  if (entry.blockHeight !== null && !/^(0|[1-9]\d*)$/.test(entry.blockHeight)) {
+    throw new LedgerConflictError("ledger block height must be a canonical decimal string");
+  }
   if (entry.payload === null || typeof entry.payload !== "object") {
     throw new LedgerConflictError("ledger payload must be a canonical event object");
   }
@@ -136,11 +139,14 @@ function sameNullableText(existing: unknown, expected: string | null): boolean {
   return expected !== null && String(existing) === expected;
 }
 
-function sameNullableNumber(existing: unknown, expected: number | null): boolean {
+function sameNullableBigIntString(existing: unknown, expected: string | null): boolean {
   if (expected === null) return existing === null || existing === undefined;
   if (existing === null || existing === undefined) return false;
-  const value = Number(existing);
-  return Number.isSafeInteger(value) && value === expected;
+  try {
+    return BigInt(String(existing)) === BigInt(expected);
+  } catch {
+    return false;
+  }
 }
 
 function assertRawMatches(existing: Record<string, unknown>, entry: LedgerEntry): void {
@@ -149,7 +155,7 @@ function assertRawMatches(existing: Record<string, unknown>, entry: LedgerEntry)
   if (!sameNullableText(existing.tx_hash, entry.txHash)) mismatches.push("tx_hash");
   if (existing.event_name !== entry.eventName) mismatches.push("event_name");
   if (existing.event_version !== entry.eventVersion) mismatches.push("event_version");
-  if (!sameNullableNumber(existing.block_height, entry.blockHeight)) mismatches.push("block_height");
+  if (!sameNullableBigIntString(existing.block_height, entry.blockHeight)) mismatches.push("block_height");
   if (!sameNullableText(existing.block_hash, entry.blockHash)) mismatches.push("block_hash");
   if (stableJson(existing.payload) !== stableJson(entry.payload)) mismatches.push("payload");
   if (mismatches.length > 0) {
@@ -171,7 +177,7 @@ function assertExistingProjectionMatches(existing: Record<string, unknown>, entr
   if (!sameNullableText(existing.reference, entry.reference)) mismatches.push("reference");
   if (!sameNullableText(existing.entity_type, entry.entityType)) mismatches.push("entity_type");
   if (!sameNullableText(existing.entity_id, entry.entityId)) mismatches.push("entity_id");
-  if (!sameNullableNumber(existing.block_height, entry.blockHeight)) mismatches.push("block_height");
+  if (!sameNullableBigIntString(existing.block_height, entry.blockHeight)) mismatches.push("block_height");
   if (!sameNullableText(existing.block_hash, entry.blockHash)) mismatches.push("block_hash");
   if (!sameTimestamp(existing.chain_timestamp, entry.chainTimestamp)) {
     mismatches.push("chain_timestamp");
