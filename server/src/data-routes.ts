@@ -51,6 +51,7 @@ export function registerDataRoutes(app: FastifyInstance): void {
       },
     },
     async (request) => {
+      requireRole(request, ["operator", "admin"]);
       const { limit, cursor } = pageParams(request.query);
       const rows = await sql<{ wallet_id: string }[]>`
         select wallet_id, owner_type, balance, updated_at, last_tx_hash, active
@@ -71,6 +72,7 @@ export function registerDataRoutes(app: FastifyInstance): void {
       },
     },
     async (request) => {
+      requireRole(request, ["operator", "admin"]);
       const { limit, cursor } = pageParams(request.query);
       const rows = await sql<{ seq: string }[]>`
         select seq, network_id, contract_id, tx_hash, receipt_id, event_index,

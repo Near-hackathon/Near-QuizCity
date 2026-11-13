@@ -1,16 +1,26 @@
 import { useEffect, useState } from "react";
 import { api, type DemoAccount, type ServerConfig } from "../api";
-import { call, type ChainPlayer, type Session } from "../chain";
+import type { ChainPlayer, Session } from "../chain";
 
 type Props = {
   session: Session | null;
   chainPlayer: ChainPlayer | null;
-  onLogin: (session: Session) => void;
+  onLogin: (account: DemoAccount) => void;
   onLogout: () => void;
+  onConnect?: () => void;
   refresh: () => Promise<void>;
+  sendTransaction: (method: string, args: Record<string, unknown>) => Promise<string>;
 };
 
-export function Onboard({ session, chainPlayer, onLogin, onLogout, refresh }: Props) {
+export function Onboard({
+  session,
+  chainPlayer,
+  onLogin,
+  onLogout,
+  onConnect,
+  refresh,
+  sendTransaction,
+}: Props) {
   const [demo, setDemo] = useState<DemoAccount[]>([]);
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [username, setUsername] = useState("");
@@ -50,7 +60,7 @@ export function Onboard({ session, chainPlayer, onLogin, onLogout, refresh }: Pr
   function register() {
     if (!session) return;
     void run(async () => {
-      const hash = await call(session, "register_player", { username });
+      const hash = await sendTransaction("register_player", { username });
       await api.register(username, hash);
     });
   }
@@ -58,7 +68,7 @@ export function Onboard({ session, chainPlayer, onLogin, onLogout, refresh }: Pr
   function claim() {
     if (!session) return;
     void run(async () => {
-      const hash = await call(session, "claim_starter", {});
+      const hash = await sendTransaction("claim_starter", {});
       await api.claim(hash);
     });
   }
@@ -73,8 +83,8 @@ export function Onboard({ session, chainPlayer, onLogin, onLogout, refresh }: Pr
           <>
             <p className="warning">
               Disposable testnet keys only. They are served only with{" "}
-              <span className="mono">DEMO_MODE=1</span> and stored in this browser&apos;s localStorage. Never
-              use them for real assets.
+              <span className="mono">DEMO_MODE=1</span> and held in memory for this tab only. Never use them
+              for real assets.
             </p>
             <p className="muted">
               Playing on <span className="mono">{config.networkId}</span> · {config.contractId}
@@ -97,9 +107,13 @@ export function Onboard({ session, chainPlayer, onLogin, onLogout, refresh }: Pr
         ) : (
           <div className="readonly-note">
             <p className="muted">
-              This deployment is read-only. Wallet sign-in is unavailable until QC-0502 is implemented; there
-              is no account picker in non-demo mode.
+              Connect your NEAR wallet to play. This build supports MyNearWallet on testnet.
             </p>
+            {onConnect && (
+              <button className="btn primary" disabled={busy} onClick={onConnect}>
+                Connect NEAR wallet
+              </button>
+            )}
             <p className="muted mono">
               {config.networkId} · {config.contractId}
             </p>

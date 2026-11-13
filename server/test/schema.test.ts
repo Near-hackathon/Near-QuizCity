@@ -134,7 +134,12 @@ test("malformed JSON and wrong content type fail safely", async () => {
 test("successful responses satisfy their schemas", async () => {
   const response = await app.inject({ method: "GET", url: "/v1/config" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(Object.keys(response.json()).sort(), ["contractId", "demoMode", "networkId"]);
+  assert.deepEqual(Object.keys(response.json()).sort(), [
+    "contractId",
+    "demoMode",
+    "networkId",
+    "protocolVersion",
+  ]);
 });
 
 test("forced internal errors return a safe envelope and never leak details", async () => {

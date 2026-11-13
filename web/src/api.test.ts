@@ -14,12 +14,18 @@ beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 describe("api client", () => {
   it("sends credentialed JSON requests and parses the success envelope", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ demoMode: true, networkId: "testnet", contractId: "quizcity.testnet" }),
+      jsonResponse({
+        demoMode: true,
+        networkId: "testnet",
+        contractId: "quizcity.testnet",
+        protocolVersion: "1.0.0",
+      }),
     );
 
     const config = await api.config();
@@ -64,7 +70,7 @@ describe("api client", () => {
       signature: "signature",
       nonce: "nonce",
     });
-    expect(localStorage.getItem("quizcity.csrf")).toBe("csrf-token");
+    expect(sessionStorage.getItem("quizcity.csrf")).toBe("csrf-token");
 
     fetchMock.mockResolvedValueOnce(jsonResponse({ balance: "500" }));
     await api.claim("x".repeat(44));
@@ -120,6 +126,7 @@ describe("api abort and pagination", () => {
             owner_type: "player",
             balance: "9007199254740993",
             updated_at: "2026-11-13T00:00:00.000Z",
+            last_tx_hash: null,
           },
         ],
         nextCursor: "opaque/cursor+value=",
@@ -141,14 +148,72 @@ describe("api abort and pagination", () => {
 
   it("rejects malformed pagination responses", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: "nope", nextCursor: 3 }));
-    await expect(api.walletPage()).rejects.toThrow("malformed page response");
+    await expect(api.walletPage()).rejects.toThrow("returned a malformed response");
+  });
+
+  it("rejects non-canonical amounts and unexpected response fields", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          {
+            wallet_id: "player:alice.testnet",
+            owner_type: "player",
+            balance: "340282366920938463463374607431768211456",
+            updated_at: "2026-11-13T00:00:00.000Z",
+            last_tx_hash: null,
+          },
+        ],
+        nextCursor: null,
+      }),
+    );
+    await expect(api.walletPage()).rejects.toThrow("/balance");
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        demoMode: false,
+        networkId: "testnet",
+        contractId: "quizcity.testnet",
+        protocolVersion: "1.0.0",
+        secret: "must-not-pass",
+      }),
+    );
+    await expect(api.config()).rejects.toThrow("/secret");
   });
 
   it("attaches only the locally stored CSRF token", async () => {
-    localStorage.setItem("quizcity.csrf", "stale");
+    sessionStorage.setItem("quizcity.csrf", "stale");
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: [], nextCursor: null }));
     await api.walletPage();
     const [, init] = fetchMock.mock.calls[0];
     expect(new Headers(init.headers).get("x-csrf-token")).toBe("stale");
+  });
+});
+
+describe("protocol version policy", () => {
+  it("accepts the same major with newer minor and rejects missing or newer majors", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        demoMode: false,
+        networkId: "testnet",
+        contractId: "quizcity.testnet",
+        protocolVersion: "1.9.2",
+      }),
+    );
+    await expect(api.config()).resolves.toMatchObject({ protocolVersion: "1.9.2" });
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        demoMode: false,
+        networkId: "testnet",
+        contractId: "quizcity.testnet",
+        protocolVersion: "2.0.0",
+      }),
+    );
+    await expect(api.config()).rejects.toThrow(/Unsupported protocol version/);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ demoMode: false, networkId: "testnet", contractId: "quizcity.testnet" }),
+    );
+    await expect(api.config()).rejects.toThrow(/malformed response/);
   });
 });

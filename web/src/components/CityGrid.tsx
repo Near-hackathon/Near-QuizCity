@@ -21,8 +21,8 @@ export function money(value: string) {
 
 type GridProps = {
   properties: Property[];
-  selectedId: number | null;
-  onSelect: (id: number | null) => void;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
 };
 
 export function CityGrid({ properties, selectedId, onSelect }: GridProps) {

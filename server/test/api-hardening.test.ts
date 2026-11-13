@@ -4,6 +4,7 @@ import { makeTestConfig, testEnv } from "./fixtures.js";
 
 Object.assign(process.env, testEnv);
 const { buildApp } = await import("../src/app.js");
+const { isPublicRoute } = await import("../src/auth/plugin.js");
 
 const app = await buildApp(makeTestConfig({ rateLimitMax: 1 }));
 await app.ready();
@@ -46,6 +47,12 @@ test("CORS reflects only the configured origin", async () => {
     },
   });
   assert.equal(denied.headers["access-control-allow-origin"], undefined);
+});
+
+test("financial wallet and ledger reads are never public", () => {
+  assert.equal(isPublicRoute("GET", "/v1/wallets", "/v1/wallets"), false);
+  assert.equal(isPublicRoute("GET", "/v1/transactions", "/v1/transactions"), false);
+  assert.equal(isPublicRoute("GET", "/v1/properties", "/v1/properties"), true);
 });
 
 after(async () => {

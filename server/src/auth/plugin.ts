@@ -25,8 +25,6 @@ const PUBLIC_ROUTES = new Set([
   "GET /v1/demo/accounts",
   "GET /v1/players",
   "GET /v1/players/:account",
-  "GET /v1/wallets",
-  "GET /v1/transactions",
   "GET /v1/properties",
   "GET /v1/businesses",
   "GET /v1/economy",

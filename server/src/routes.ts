@@ -46,6 +46,7 @@ import {
   CreateBusinessBody,
   ErrorResponses,
   JobParams,
+  JobResponse,
   JobsPage,
   LooseObject,
   PayServiceBody,
@@ -60,6 +61,7 @@ import {
   RegisterBody,
   RegisterResponse,
   RetryJobBody,
+  RetryJobResponse,
   StartQuizBody,
   StartQuizResponse,
   SubmitJobBody,
@@ -330,7 +332,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       schema: {
         params: JobParams,
         body: AcceptJobBody,
-        response: { 200: LooseObject, ...ErrorResponses },
+        response: { 200: JobResponse, ...ErrorResponses },
       },
     },
     async (request) => {
@@ -352,7 +354,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       schema: {
         params: JobParams,
         body: SubmitJobBody,
-        response: { 200: LooseObject, ...ErrorResponses },
+        response: { 200: JobResponse, ...ErrorResponses },
       },
     },
     async (request) => {
@@ -376,7 +378,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       schema: {
         params: JobParams,
         body: VerifyJobBody,
-        response: { 200: LooseObject, ...ErrorResponses },
+        response: { 200: JobResponse, ...ErrorResponses },
       },
     },
     async (request) => {
@@ -536,7 +538,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       schema: {
         params: JobParams,
         body: RetryJobBody,
-        response: { 200: LooseObject, ...ErrorResponses },
+        response: { 200: RetryJobResponse, ...ErrorResponses },
       },
     },
     async (request) => {

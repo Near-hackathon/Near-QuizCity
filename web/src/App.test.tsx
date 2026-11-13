@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   properties: vi.fn(),
   businesses: vi.fn(),
   jobs: vi.fn(),
+  quizzes: vi.fn(),
   wallets: vi.fn(),
   transactions: vi.fn(),
   economy: vi.fn(),
@@ -16,20 +17,64 @@ const api = vi.hoisted(() => ({
 const chain = vi.hoisted(() => ({
   call: vi.fn(),
   view: vi.fn(),
-  loadSession: vi.fn(() => null as null | { accountId: string; publicKey: string; secretKey: string }),
+  loadSession: vi.fn(
+    () =>
+      null as null | {
+        accountId: string;
+        publicKey?: string;
+        networkId: string;
+        walletId: string;
+        authenticatedAt: string;
+      },
+  ),
   saveSession: vi.fn(),
   clearSession: vi.fn(),
 }));
 const auth = vi.hoisted(() => ({ ensureAuth: vi.fn(), logout: vi.fn() }));
+const wallet = vi.hoisted(() => ({
+  account: null,
+  connector: null,
+  connecting: false,
+  error: null,
+  connect: vi.fn(),
+  restore: vi.fn(),
+  disconnect: vi.fn(),
+  signer: vi.fn(),
+  sendTransaction: vi.fn(),
+}));
 
 vi.mock("./api", () => ({ api }));
 vi.mock("./chain", () => chain);
 vi.mock("./auth", () => auth);
+vi.mock("./wallet/demo-loader", () => ({
+  demoSigner: async () => ({
+    accountId: "alice.testnet",
+    signMessage: async () => ({
+      accountId: "alice.testnet",
+      publicKey: "ed25519:11111111111111111111111111111111",
+      signature: "signature",
+    }),
+  }),
+  registerDemoKey: vi.fn(),
+  demoTransaction: vi.fn(),
+}));
+vi.mock("./wallet/WalletProvider", () => ({
+  useWallet: () => wallet,
+}));
 
 const { App } = await import("./App");
+const { StateProvider } = await import("./state/StateProvider");
+
+function renderApp() {
+  return render(
+    <StateProvider>
+      <App />
+    </StateProvider>,
+  );
+}
 
 const property: Property = {
-  id: 1,
+  id: "1",
   district: "knowledge",
   x: 0,
   y: 0,
@@ -37,7 +82,7 @@ const property: Property = {
   property_type: "venue",
   price: "300",
   for_sale: true,
-  transfer_count: 1,
+  transfer_count: "1",
 };
 
 beforeEach(() => {
@@ -45,10 +90,16 @@ beforeEach(() => {
   Object.values(chain).forEach((mock) => mock.mockReset());
   Object.values(auth).forEach((mock) => mock.mockReset());
   chain.loadSession.mockReturnValue(null);
-  api.config.mockResolvedValue({ demoMode: false, networkId: "testnet", contractId: "quizcity.testnet" });
+  api.config.mockResolvedValue({
+    demoMode: false,
+    networkId: "testnet",
+    contractId: "quizcity.testnet",
+    protocolVersion: "1.0.0",
+  });
   api.properties.mockResolvedValue([]);
   api.businesses.mockResolvedValue([]);
   api.jobs.mockResolvedValue([]);
+  api.quizzes.mockResolvedValue([]);
   api.wallets.mockResolvedValue([]);
   api.transactions.mockResolvedValue([]);
   api.economy.mockResolvedValue({
@@ -64,7 +115,7 @@ beforeEach(() => {
 
 describe("App", () => {
   it("renders the read-only dashboard with exact economy values", async () => {
-    const { container } = render(<App />);
+    const { container } = renderApp();
     expect(await screen.findByText("Knowledge / Commercial District")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("9,007,199,254,740,993")).toBeInTheDocument());
     expect(screen.getByText("2")).toBeInTheDocument();
@@ -74,7 +125,7 @@ describe("App", () => {
   it("shows a safe API failure notice and recovers on explicit retry", async () => {
     const user = userEvent.setup();
     api.properties.mockRejectedValueOnce(new Error("api unavailable"));
-    render(<App />);
+    renderApp();
     expect(await screen.findByText("api unavailable")).toBeInTheDocument();
 
     api.properties.mockResolvedValue([property]);
@@ -86,20 +137,22 @@ describe("App", () => {
     chain.loadSession.mockReturnValue({
       accountId: "alice.testnet",
       publicKey: "ed25519:11111111111111111111111111111111",
-      secretKey: "ed25519:22222222222222222222222222222222",
+      networkId: "testnet",
+      walletId: "demo",
+      authenticatedAt: "2026-11-13T00:00:00.000Z",
     });
     auth.ensureAuth.mockResolvedValue({
       accountId: "alice.testnet",
       roles: ["player"],
       expiresAt: "2026-11-13T00:00:00.000Z",
     });
-    const { container, unmount } = render(<App />);
+    const { container, unmount } = renderApp();
     expect(await screen.findByRole("button", { name: "Switch account" })).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/ed25519:|signature/i);
     unmount();
 
     auth.ensureAuth.mockRejectedValueOnce(new Error("wallet rejected"));
-    render(<App />);
+    renderApp();
     expect(await screen.findByText("sign-in failed: wallet rejected")).toBeInTheDocument();
   });
 });

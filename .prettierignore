@@ -13,3 +13,5 @@ server/backups
 *.bak.*
 *.wasm
 *.pdf
+Gridwright Jam Pack/
+household_*_sprites_v1.0/

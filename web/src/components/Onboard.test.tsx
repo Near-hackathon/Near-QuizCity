@@ -10,39 +10,56 @@ const api = {
   register: vi.fn(),
   claim: vi.fn(),
 };
-const call = vi.fn();
+const sendTransaction = vi.fn();
 
 vi.mock("../api", () => ({ api }));
-vi.mock("../chain", () => ({ call }));
-
 const { Onboard } = await import("./Onboard");
 
 const session: Session = {
   accountId: "alice.testnet",
   publicKey: "ed25519:11111111111111111111111111111111",
-  secretKey: "ed25519:22222222222222222222222222222222",
+  networkId: "testnet",
+  walletId: "demo",
+  authenticatedAt: "2026-11-13T00:00:00.000Z",
 };
 
 beforeEach(() => {
   Object.values(api).forEach((mock) => mock.mockReset());
-  call.mockReset();
-  api.config.mockResolvedValue({ demoMode: false, networkId: "testnet", contractId: "quizcity.testnet" });
+  sendTransaction.mockReset();
+  api.config.mockResolvedValue({
+    demoMode: false,
+    networkId: "testnet",
+    contractId: "quizcity.testnet",
+    protocolVersion: "1.0.0",
+  });
   api.demoAccounts.mockResolvedValue({ networkId: "testnet", contractId: "quizcity.testnet", accounts: [] });
 });
 
 describe("Onboard", () => {
   it("shows loading and read-only states without a secret-bearing picker", async () => {
     render(
-      <Onboard session={null} chainPlayer={null} onLogin={vi.fn()} onLogout={vi.fn()} refresh={vi.fn()} />,
+      <Onboard
+        session={null}
+        chainPlayer={null}
+        onLogin={vi.fn()}
+        onLogout={vi.fn()}
+        refresh={vi.fn()}
+        sendTransaction={sendTransaction}
+      />,
     );
     expect(screen.getByText(/Loading deployment configuration/)).toBeInTheDocument();
-    expect(await screen.findByText(/This deployment is read-only/)).toBeInTheDocument();
-    expect(screen.queryByText(/localStorage/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/Connect your NEAR wallet/)).toBeInTheDocument();
+    expect(screen.queryByText(/secret key/i)).not.toBeInTheDocument();
   });
 
   it("renders only demo accounts when demo mode is enabled", async () => {
     const user = userEvent.setup();
-    api.config.mockResolvedValue({ demoMode: true, networkId: "testnet", contractId: "quizcity.testnet" });
+    api.config.mockResolvedValue({
+      demoMode: true,
+      networkId: "testnet",
+      contractId: "quizcity.testnet",
+      protocolVersion: "1.0.0",
+    });
     api.demoAccounts.mockResolvedValue({
       networkId: "testnet",
       contractId: "quizcity.testnet",
@@ -56,7 +73,14 @@ describe("Onboard", () => {
     });
     const onLogin = vi.fn();
     render(
-      <Onboard session={null} chainPlayer={null} onLogin={onLogin} onLogout={vi.fn()} refresh={vi.fn()} />,
+      <Onboard
+        session={null}
+        chainPlayer={null}
+        onLogin={onLogin}
+        onLogout={vi.fn()}
+        refresh={vi.fn()}
+        sendTransaction={sendTransaction}
+      />,
     );
     const account = await screen.findByRole("button", { name: /alice/ });
     await user.click(account);
@@ -67,7 +91,7 @@ describe("Onboard", () => {
     const user = userEvent.setup();
     const refresh = vi.fn().mockResolvedValue(undefined);
     let resolveCall: (value: string) => void = () => {};
-    call.mockImplementation(
+    sendTransaction.mockImplementation(
       () =>
         new Promise<string>((resolve) => {
           resolveCall = resolve;
@@ -76,7 +100,14 @@ describe("Onboard", () => {
     api.register.mockResolvedValue({ username: "alice", starter_claimed: false });
 
     render(
-      <Onboard session={session} chainPlayer={null} onLogin={vi.fn()} onLogout={vi.fn()} refresh={refresh} />,
+      <Onboard
+        session={session}
+        chainPlayer={null}
+        onLogin={vi.fn()}
+        onLogout={vi.fn()}
+        refresh={refresh}
+        sendTransaction={sendTransaction}
+      />,
     );
     const button = await screen.findByRole("button", { name: "Register on chain" });
     await user.click(button);
@@ -86,7 +117,7 @@ describe("Onboard", () => {
     expect(api.register.mock.calls[0][1]).toBe("x".repeat(44));
     expect(refresh).toHaveBeenCalled();
 
-    call.mockResolvedValue("y".repeat(44));
+    sendTransaction.mockResolvedValue("y".repeat(44));
     api.register.mockRejectedValueOnce(new Error("registration failed"));
     const retry = await screen.findByRole("button", { name: "Register on chain" });
     await waitFor(() => expect(retry).toBeEnabled());
@@ -96,7 +127,7 @@ describe("Onboard", () => {
 
   it("claims for a registered player and has no serious accessibility violations", async () => {
     const user = userEvent.setup();
-    call.mockResolvedValue("x".repeat(44));
+    sendTransaction.mockResolvedValue("x".repeat(44));
     api.claim.mockResolvedValue({ balance: "500" });
     const chainPlayer: ChainPlayer = {
       username: "alice",
@@ -110,6 +141,7 @@ describe("Onboard", () => {
         onLogin={vi.fn()}
         onLogout={vi.fn()}
         refresh={vi.fn()}
+        sendTransaction={sendTransaction}
       />,
     );
     await user.click(await screen.findByRole("button", { name: "Claim 500 QC" }));

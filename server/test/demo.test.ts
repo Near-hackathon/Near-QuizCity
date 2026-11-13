@@ -95,6 +95,7 @@ test("config endpoint exposes no secrets", async () => {
       demoMode: true,
       networkId: "testnet",
       contractId: "quizcity.testnet",
+      protocolVersion: "1.0.0",
     });
   } finally {
     await app.close();

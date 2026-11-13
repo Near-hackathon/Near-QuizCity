@@ -1,15 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  api,
-  type Business,
-  type DemoAccount,
-  type Economy,
-  type Job,
-  type Property,
-  type Tx,
-  type Wallet,
-} from "./api";
-import { call, clearSession, loadSession, saveSession, view, type ChainPlayer, type Session } from "./chain";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createQueryCoordinator, startFallbackRefresh } from "./state/queries";
+import { useAppState } from "./state/StateProvider";
+import { api, type Business, type DemoAccount, type Job, type Property, type ServerConfig } from "./api";
+import { clearSession, loadSession, saveSession, view, type ChainPlayer } from "./chain";
+import type { WalletSession as Session } from "./wallet/types";
+import { registerDemoKey, demoSigner, demoTransaction } from "./wallet/demo-loader";
+import { useWallet } from "./wallet/WalletProvider";
 import { ensureAuth, logout as authLogout } from "./auth";
 import { BusinessPanel } from "./components/BusinessPanel";
 import { CityGrid, PropertyCard, money } from "./components/CityGrid";
@@ -19,63 +15,146 @@ import { Onboard } from "./components/Onboard";
 
 type Notice = { kind: "ok" | "err"; text: string; tx?: string | null };
 
-export function App() {
+export type AppMode = "city" | "manage" | "admin";
+
+export function App({ mode = "city" }: { mode?: AppMode } = {}) {
   const [session, setSession] = useState<Session | null>(loadSession());
+  const [config, setConfig] = useState<ServerConfig | null>(null);
   const [player, setPlayer] = useState<ChainPlayer | null>(null);
   const [balance, setBalance] = useState("0");
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [transactions, setTransactions] = useState<Tx[]>([]);
-  const [economy, setEconomy] = useState<Economy | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { state, dispatch } = useAppState();
+  const wallet = useWallet();
+  const coordinatorRef = useRef(createQueryCoordinator());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const refresh = useCallback(async () => {
-    const [p, b, j, w, t, e] = await Promise.all([
-      api.properties(),
-      api.businesses(),
-      api.jobs(),
-      api.wallets(),
-      api.transactions(),
-      api.economy(),
-    ]);
-    setProperties(p);
-    setBusinesses(b);
-    setJobs(j);
-    setWallets(w);
-    setTransactions(t);
-    setEconomy(e);
+  const properties = state.lists.propertyIds.map((id) => state.entities.properties[id]);
+  const businesses = state.lists.businessIds.map((id) => state.entities.businesses[id]);
+  const jobs = state.lists.jobIds.map((id) => state.entities.jobs[id]);
+  const wallets = state.lists.walletIds.map((id) => state.entities.wallets[id]);
+  const transactions = state.lists.transactionIds.map((id) => state.entities.transactions[id]);
+  const economy = state.economy;
 
-    if (session) {
-      const [chainPlayer, chainBalance] = await Promise.all([
-        view<ChainPlayer | null>("get_player", { account: session.accountId }),
-        view<string>("get_balance", { wallet: `player:${session.accountId}` }),
+  const refresh = useCallback(async () => {
+    const query = coordinatorRef.current.begin();
+    const scopes = [
+      ...(mode === "admin" ? [] : ["properties", "businesses"]),
+      ...(mode === "manage" ? ["jobs", "quizzes"] : []),
+      ...(mode === "admin" ? ["wallets", "transactions"] : []),
+      "economy",
+    ];
+    for (const scope of scopes) dispatch({ type: "bootstrapStart", scope });
+    try {
+      const [p, b, j, q, w, t, e] = await Promise.all([
+        mode === "admin" ? Promise.resolve(null) : api.properties({ signal: query.signal }),
+        mode === "admin" ? Promise.resolve(null) : api.businesses({ signal: query.signal }),
+        mode === "manage" ? api.jobs({ signal: query.signal }) : Promise.resolve(null),
+        mode === "manage" ? api.quizzes({ signal: query.signal }) : Promise.resolve(null),
+        mode === "admin" ? api.wallets({ signal: query.signal }) : Promise.resolve(null),
+        mode === "admin" ? api.transactions({ signal: query.signal }) : Promise.resolve(null),
+        api.economy({ signal: query.signal }),
       ]);
-      setPlayer(chainPlayer);
-      setBalance(chainBalance ?? "0");
-    } else {
-      setPlayer(null);
-      setBalance("0");
+      if (query.signal.aborted || query.generation !== coordinatorRef.current.generation()) return;
+      if (p) dispatch({ type: "properties", items: p });
+      if (b) dispatch({ type: "businesses", items: b });
+      if (j) dispatch({ type: "jobs", items: j });
+      if (q) dispatch({ type: "quizzes", items: q });
+      if (w) dispatch({ type: "wallets", items: w });
+      if (t) dispatch({ type: "transactions", items: t });
+      dispatch({ type: "economy", value: e });
+      for (const scope of scopes) dispatch({ type: "bootstrapSuccess", scope });
+
+      if (session) {
+        const [chainPlayer, chainBalance] = await Promise.all([
+          view<ChainPlayer | null>("get_player", { account: session.accountId }),
+          view<string>("get_balance", { wallet: `player:${session.accountId}` }),
+        ]);
+        if (!query.signal.aborted) {
+          setPlayer(chainPlayer);
+          setBalance(chainBalance ?? "0");
+        }
+      } else {
+        setPlayer(null);
+        setBalance("0");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      const message = error instanceof Error ? error.message : "refresh failed";
+      for (const scope of scopes) dispatch({ type: "bootstrapFailure", scope, message });
+      throw error;
+    } finally {
+      query.finish();
     }
-  }, [session]);
+  }, [dispatch, mode, session]);
 
   useEffect(() => {
-    if (!session) return;
+    let active = true;
     api
       .config()
-      .then((config) => ensureAuth(session, config.demoMode))
-      .catch((err: Error) => setNotice({ kind: "err", text: `sign-in failed: ${err.message}` }));
-  }, [session]);
+      .then(async (runtime) => {
+        if (!active) return;
+        setConfig(runtime);
+        if (!session) return;
+        const signer =
+          session.walletId === "demo"
+            ? await demoSigner(runtime.demoMode, session.accountId)
+            : await wallet
+                .restore(runtime.networkId, runtime.contractId)
+                .then((account) =>
+                  account?.accountId === session.accountId ? wallet.signer(session.accountId) : null,
+                );
+        if (!signer) {
+          throw new Error(
+            runtime.demoMode
+              ? "demo sign-in expired; select a demo account again"
+              : "wallet is not connected or the account changed",
+          );
+        }
+        return ensureAuth(session.accountId, signer);
+      })
+      .catch((err: Error) => {
+        if (active) setNotice({ kind: "err", text: `sign-in failed: ${err.message}` });
+      });
+    return () => {
+      active = false;
+    };
+  }, [session, wallet.restore, wallet.signer]);
 
   useEffect(() => {
-    refresh().catch((err: Error) => setNotice({ kind: "err", text: err.message }));
-    const timer = setInterval(() => {
-      refresh().catch(() => undefined);
-    }, 4000);
-    return () => clearInterval(timer);
+    if (session?.walletId !== "demo" && wallet.account && wallet.account.accountId !== session?.accountId) {
+      clearSession();
+      setSession(null);
+      dispatch({ type: "reset" });
+      setNotice({
+        kind: "err",
+        text: `Wallet switched to ${wallet.account.accountId}; please sign in again.`,
+      });
+    }
+  }, [dispatch, session, wallet.account]);
+
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
+
+  useEffect(() => {
+    let active = true;
+    refresh().catch((err: Error) => {
+      if (active) setNotice({ kind: "err", text: err.message });
+    });
+    const stop = startFallbackRefresh({
+      intervalMs: 20_000,
+      isHidden: () => typeof document !== "undefined" && document.hidden,
+      isOnline: () => typeof navigator === "undefined" || navigator.onLine,
+      isRefreshing: () => busyRef.current,
+      refresh: () => refresh().catch(() => undefined),
+    });
+    return () => {
+      active = false;
+      coordinatorRef.current.reset();
+      stop();
+    };
   }, [refresh]);
 
   async function run(action: () => Promise<string | null | undefined>, success: string) {
@@ -100,23 +179,54 @@ export function App() {
   const me = session?.accountId ?? null;
   const selected = properties.find((property) => property.id === selectedId) ?? null;
   const selectedBusiness = selected
-    ? businesses.find((business) => Number(business.property_id) === selected.id)
+    ? businesses.find((business) => business.property_id === selected.id)
     : undefined;
 
-  function login(account: DemoAccount) {
+  async function login(account: DemoAccount) {
+    if (!config?.demoMode) throw new Error("demo accounts are disabled by the server");
+    await registerDemoKey(config.demoMode, account.accountId, account.publicKey, account.secretKey);
     const next: Session = {
       accountId: account.accountId,
       publicKey: account.publicKey,
-      secretKey: account.secretKey,
+      networkId: config.networkId,
+      walletId: "demo",
+      authenticatedAt: new Date().toISOString(),
     };
     saveSession(next);
     setSession(next);
     setNotice({ kind: "ok", text: `Signed in as ${account.accountId}` });
   }
 
-  function logout() {
-    void authLogout();
+  async function connectNormalWallet() {
+    try {
+      if (!config) throw new Error("deployment configuration is not loaded");
+      const account = await wallet.connect(config.networkId, config.contractId);
+      if (!account) {
+        setNotice({ kind: "err", text: "wallet connection was not completed" });
+        return;
+      }
+      const next: Session = {
+        accountId: account.accountId,
+        publicKey: account.publicKey,
+        networkId: config.networkId,
+        walletId: wallet.connector?.id ?? "my-near-wallet",
+        authenticatedAt: new Date().toISOString(),
+      };
+      saveSession(next);
+      setSession(next);
+    } catch (error) {
+      setNotice({
+        kind: "err",
+        text: error instanceof Error ? error.message : "wallet connection failed",
+      });
+    }
+  }
+
+  async function logout() {
+    await Promise.all([authLogout(), wallet.disconnect()]);
     clearSession();
+    coordinatorRef.current.reset();
+    dispatch({ type: "reset" });
     setSession(null);
     setPlayer(null);
     setBalance("0");
@@ -124,10 +234,26 @@ export function App() {
     setNotice(null);
   }
 
+  const sendContractTransaction = useCallback(
+    async (methodName: string, args: Record<string, unknown>): Promise<string> => {
+      if (!session || !config) throw new Error("sign in before sending a transaction");
+      const input = { receiverId: config.contractId, methodName, args };
+      if (session.walletId === "demo") {
+        const result = await demoTransaction(config.demoMode, session.accountId, input);
+        if (!result) throw new Error("demo signer is unavailable; sign in again");
+        return result.txHash;
+      }
+      const result = await wallet.sendTransaction(input);
+      if (!result) throw new Error("wallet did not return a transaction result");
+      return result.txHash;
+    },
+    [config, session, wallet.sendTransaction],
+  );
+
   function buyProperty(property: Property) {
     if (!session) return;
     void run(async () => {
-      const tx = await call(session, "buy_property", { property_id: property.id });
+      const tx = await sendContractTransaction("buy_property", { property_id: property.id });
       await api.buyProperty(property.id, tx);
       return tx;
     }, `Bought plot #${property.id}`);
@@ -136,7 +262,10 @@ export function App() {
   function openBusiness(property: Property, name: string) {
     if (!session) return;
     void run(async () => {
-      const tx = await call(session, "create_business", { property_id: property.id, name });
+      const tx = await sendContractTransaction("create_business", {
+        property_id: property.id,
+        name,
+      });
       await api.createBusiness(property.id, name, tx);
       return tx;
     }, `Opened ${name}`);
@@ -179,7 +308,10 @@ export function App() {
     if (!session) return;
     void run(
       async () => {
-        const tx = await call(session, "pay_service", { business_id: business.id, amount });
+        const tx = await sendContractTransaction("pay_service", {
+          business_id: business.id,
+          amount,
+        });
         await api.payService(business.id, amount, tx);
         return tx;
       },
@@ -190,7 +322,10 @@ export function App() {
   function transferBusiness(business: Business, newOwner: string) {
     if (!session) return;
     void run(async () => {
-      const tx = await call(session, "transfer_business", { business_id: business.id, new_owner: newOwner });
+      const tx = await sendContractTransaction("transfer_business", {
+        business_id: business.id,
+        new_owner: newOwner,
+      });
       await api.transferBusiness(business.id, newOwner, tx);
       return tx;
     }, `Transferred ${business.name} to ${newOwner}`);
@@ -212,7 +347,17 @@ export function App() {
         </div>
       </header>
 
-      <Onboard session={session} chainPlayer={player} onLogin={login} onLogout={logout} refresh={refresh} />
+      {mode === "city" && (
+        <Onboard
+          session={session}
+          chainPlayer={player}
+          onLogin={(account) => void login(account)}
+          onLogout={logout}
+          onConnect={() => void connectNormalWallet()}
+          refresh={refresh}
+          sendTransaction={sendContractTransaction}
+        />
+      )}
 
       {notice && (
         <div className={`notice ${notice.kind}`}>
@@ -239,60 +384,73 @@ export function App() {
       )}
 
       <main className="columns">
-        <div className="column">
-          <CityGrid properties={properties} selectedId={selectedId} onSelect={setSelectedId} />
+        {mode === "city" && (
+          <div className="column">
+            <CityGrid properties={properties} selectedId={selectedId} onSelect={setSelectedId} />
 
-          {selected && (
-            <section className="card">
-              <PropertyCard
-                property={selected}
-                business={selectedBusiness}
-                me={me}
-                busy={busy}
-                onBuy={buyProperty}
-                onOpenBusiness={openBusiness}
-              />
-            </section>
-          )}
+            {selected && (
+              <section className="card">
+                <PropertyCard
+                  property={selected}
+                  business={selectedBusiness}
+                  me={me}
+                  busy={busy}
+                  onBuy={buyProperty}
+                  onOpenBusiness={openBusiness}
+                />
+              </section>
+            )}
 
-          <BusinessPanel
-            businesses={businesses}
-            me={me}
-            busy={busy}
-            onPay={payService}
-            onTransfer={transferBusiness}
-          />
-        </div>
+            <BusinessPanel
+              businesses={businesses}
+              me={me}
+              busy={busy}
+              onPay={payService}
+              onTransfer={transferBusiness}
+            />
+          </div>
+        )}
 
-        <div className="column">
-          {session && (
-            <section className="card player-card">
-              <div className="card-head">
-                <h2>{player?.username ?? "Resident"}</h2>
-                <button className="btn ghost small" onClick={logout}>
-                  switch
-                </button>
-              </div>
-              <p className="mono muted">{session.accountId}</p>
-              <div className="balance">
-                <span>QC balance</span>
-                <strong>{money(balance)}</strong>
-              </div>
-              {!player && <p className="muted">Register above to claim your 500 QC.</p>}
-            </section>
-          )}
+        {mode !== "city" && (
+          <div className="column">
+            {mode === "manage" && session && (
+              <section className="card player-card">
+                <div className="card-head">
+                  <h2>{player?.username ?? "Resident"}</h2>
+                  <button className="btn ghost small" onClick={logout}>
+                    switch
+                  </button>
+                </div>
+                <p className="mono muted">{session.accountId}</p>
+                <div className="balance">
+                  <span>QC balance</span>
+                  <strong>{money(balance)}</strong>
+                </div>
+                {!player && <p className="muted">Register above to claim your 500 QC.</p>}
+              </section>
+            )}
 
-          <QuizPanel
-            me={me}
-            busy={busy}
-            start={async () => api.startQuiz("daily-quiz")}
-            submit={async (attemptId, answers) => api.submitQuiz("daily-quiz", attemptId, answers)}
-          />
-
-          <JobsPanel jobs={jobs} me={me} busy={busy} onAccept={acceptJob} onComplete={completeJob} />
-
-          <Ledger wallets={wallets} transactions={transactions} />
-        </div>
+            {mode === "manage" && (
+              <>
+                <QuizPanel
+                  me={me}
+                  busy={busy}
+                  start={async () => api.startQuiz("daily-quiz")}
+                  submit={async (attemptId, answers) => api.submitQuiz("daily-quiz", attemptId, answers)}
+                />
+                <JobsPanel jobs={jobs} me={me} busy={busy} onAccept={acceptJob} onComplete={completeJob} />
+                <BusinessPanel
+                  businesses={businesses}
+                  me={me}
+                  busy={busy}
+                  onPay={payService}
+                  onTransfer={transferBusiness}
+                />
+              </>
+            )}
+            {mode === "admin" && <Ledger wallets={wallets} transactions={transactions} />}
+          </div>
+        )}
       </main>
     </div>
   );

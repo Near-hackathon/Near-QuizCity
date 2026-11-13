@@ -6,7 +6,7 @@ import { CityGrid, money, short } from "./CityGrid";
 import type { Property } from "../api";
 
 const property: Property = {
-  id: 1,
+  id: "1",
   district: "knowledge",
   x: 1,
   y: 1,
@@ -14,7 +14,7 @@ const property: Property = {
   property_type: "venue",
   price: "300",
   for_sale: true,
-  transfer_count: 1,
+  transfer_count: "1",
 };
 
 describe("CityGrid", () => {
@@ -30,13 +30,13 @@ describe("CityGrid", () => {
     render(<CityGrid properties={[property]} selectedId={null} onSelect={onSelect} />);
     const tile = screen.getAllByRole("button")[1 * 8 + 1];
     await user.click(tile);
-    expect(onSelect).toHaveBeenLastCalledWith(1);
+    expect(onSelect).toHaveBeenLastCalledWith("1");
 
     tile.focus();
     await user.keyboard("{Enter}");
-    expect(onSelect).toHaveBeenLastCalledWith(1);
+    expect(onSelect).toHaveBeenLastCalledWith("1");
     await user.keyboard(" ");
-    expect(onSelect).toHaveBeenLastCalledWith(1);
+    expect(onSelect).toHaveBeenLastCalledWith("1");
     expect(onSelect).toHaveBeenCalledTimes(3);
   });
 
@@ -47,7 +47,7 @@ describe("CityGrid", () => {
     await user.click(screen.getAllByRole("button")[0]);
     expect(onSelect).toHaveBeenCalledWith(null);
 
-    rerender(<CityGrid properties={[property]} selectedId={1} onSelect={onSelect} />);
+    rerender(<CityGrid properties={[property]} selectedId={"1"} onSelect={onSelect} />);
     expect(screen.getAllByRole("button")[9]).toHaveClass("selected");
   });
 

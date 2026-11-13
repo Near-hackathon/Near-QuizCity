@@ -78,7 +78,7 @@ type QuizProps = {
   busy: boolean;
   start: () => Promise<{
     attemptId: string;
-    questions: { id: string; question: string; options: string[]; category: string }[];
+    questions: { id: string; question: string; options: string[]; category: string | null }[];
   }>;
   submit: (
     attemptId: string,

@@ -4,17 +4,18 @@
   "type": "module",
   "workspaces": [
     "server",
-    "web"
+    "web",
+    "packages/*"
   ],
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,green \"npm run dev --workspace=server\" \"npm run dev --workspace=web\"",
     "format": "prettier --write . && node scripts/run-contract.mjs cargo fmt",
     "format:check": "prettier --check . && npm run contract:fmt:check",
     "lint": "eslint . && npm run contract:clippy",
-    "typecheck": "npm run typecheck --workspace=server && npm run typecheck --workspace=web",
-    "test": "npm run contract:test && npm run contract:test:demo && npm test --workspace=server && node --test scripts/check-rust-toolchain.test.mjs scripts/wasm-exports.test.mjs scripts/server-coverage-reporter.test.mjs",
-    "build": "npm run contract:build && npm run typecheck --workspace=server && npm run build --workspace=web",
-    "verify": "npm run toolchain:check && npm run format:check && npm run lint && npm run secret:scan && npm run typecheck && npm run test && npm run build && npm run contract:abi:check",
+    "typecheck": "npm run typecheck --workspace=@quiz-city/protocol && npm run typecheck --workspace=server && npm run typecheck --workspace=web",
+    "test": "npm run test:protocol && npm run contract:test && npm run contract:test:demo && npm test --workspace=server && node --test scripts/check-rust-toolchain.test.mjs scripts/wasm-exports.test.mjs scripts/server-coverage-reporter.test.mjs scripts/check-web-bundle.test.mjs",
+    "build": "npm run contract:build && npm run build --workspace=@quiz-city/protocol && npm run typecheck --workspace=server && npm run build --workspace=web",
+    "verify": "npm run toolchain:check && npm run format:check && npm run lint && npm run secret:scan && npm run typecheck && npm run test && npm run build && node scripts/check-web-bundle.mjs --skip-build && npm run contract:abi:check",
     "db:push": "npm run db:push --workspace=server",
     "db:test": "npm run db:test --workspace=server",
     "db:reset": "npm run db:reset --workspace=server",
@@ -47,7 +48,9 @@
     "sandbox:install": "node scripts/install-near-sandbox.mjs",
     "verify:all": "npm run verify && npm run db:test && npm run test:web && npm run test:e2e:local",
     "secret:scan": "node scripts/secret-scan.mjs",
-    "bundle:report": "node scripts/report-bundle-size.mjs"
+    "bundle:report": "node scripts/report-bundle-size.mjs",
+    "bundle:check": "node scripts/check-web-bundle.mjs",
+    "test:protocol": "npm test --workspace=@quiz-city/protocol"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

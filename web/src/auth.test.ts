@@ -1,22 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Session } from "./chain";
+import type { MessageSigner } from "./wallet/types";
 
 const api = {
   authMe: vi.fn(),
   authNonce: vi.fn(),
   authVerify: vi.fn(),
   authLogout: vi.fn(),
+  clearCsrf: vi.fn(),
 };
 
 vi.mock("./api", () => ({ api }));
 
 const { ensureAuth, logout } = await import("./auth");
-
-const session: Session = {
-  accountId: "alice.testnet",
-  publicKey: "ed25519:11111111111111111111111111111111",
-  secretKey: "ed25519:22222222222222222222222222222222",
-};
 
 const nonce = {
   accountId: "alice.testnet",
@@ -29,6 +24,18 @@ const nonce = {
   callbackUrl: "http://localhost:5173",
 };
 
+function signer(overrides: Partial<MessageSigner> = {}): MessageSigner {
+  return {
+    accountId: "alice.testnet",
+    signMessage: vi.fn(async () => ({
+      accountId: "alice.testnet",
+      publicKey: "ed25519:11111111111111111111111111111111",
+      signature: btoa(String.fromCharCode(...new Uint8Array(64).fill(1))),
+    })),
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   Object.values(api).forEach((mock) => mock.mockReset());
   api.authMe.mockRejectedValue(new Error("no session"));
@@ -39,24 +46,15 @@ beforeEach(() => {
     expiresAt: "2026-11-13T00:00:00.000Z",
     csrfToken: "csrf",
   });
-  vi.unstubAllGlobals();
 });
 
 describe("wallet authentication adapter", () => {
-  it("passes a decoded 32-byte nonce to the wallet signer and verifies", async () => {
-    const signMessage = vi.fn(
-      async (_input: { nonce: Uint8Array; recipient: string; callbackUrl: string }) => ({
-        signature: btoa(String.fromCharCode(...new Uint8Array(64).fill(1))),
-        publicKey: session.publicKey,
-        accountId: session.accountId,
-      }),
-    );
-    vi.stubGlobal("nearWallet", { signMessage });
-
-    const result = await ensureAuth(session, false);
+  it("passes a decoded 32-byte nonce to the injected signer and verifies", async () => {
+    const wallet = signer();
+    const result = await ensureAuth("alice.testnet", wallet);
     expect(result.accountId).toBe("alice.testnet");
-    expect(signMessage).toHaveBeenCalledTimes(1);
-    const payload = signMessage.mock.calls[0][0] as {
+    expect(wallet.signMessage).toHaveBeenCalledTimes(1);
+    const payload = (wallet.signMessage as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       nonce: Uint8Array;
       recipient: string;
       callbackUrl: string;
@@ -66,38 +64,53 @@ describe("wallet authentication adapter", () => {
     expect(payload.callbackUrl).toBe("http://localhost:5173");
   });
 
-  it("rejects a wallet that signs for a different account or rejects the request", async () => {
-    vi.stubGlobal("nearWallet", {
-      signMessage: async () => ({
-        signature: btoa(String.fromCharCode(...new Uint8Array(64))),
-        publicKey: session.publicKey,
-        accountId: "bob.testnet",
-      }),
-    });
-    await expect(ensureAuth(session, false)).rejects.toThrow(/different account/);
-
-    vi.stubGlobal("nearWallet", {
-      signMessage: async () => {
-        throw new Error("user rejected");
-      },
-    });
-    await expect(ensureAuth(session, false)).rejects.toThrow(/user rejected/);
-  });
-
-  it("does not silently use demo keys for non-demo sign-in", async () => {
-    vi.stubGlobal("nearWallet", undefined);
-    await expect(ensureAuth(session, false)).rejects.toThrow(/wallet sign-in is not configured/);
+  it("rejects a signer for a different account and propagates wallet rejection", async () => {
     await expect(
-      ensureAuth({ ...session, secretKey: undefined } as unknown as Session, true),
-    ).rejects.toThrow(/wallet sign-in is not configured/);
+      ensureAuth(
+        "alice.testnet",
+        signer({
+          signMessage: async () => ({
+            accountId: "bob.testnet",
+            publicKey: "ed25519:11111111111111111111111111111111",
+            signature: "signature",
+          }),
+        }),
+      ),
+    ).rejects.toThrow(/different account/);
+
+    await expect(
+      ensureAuth(
+        "alice.testnet",
+        signer({
+          signMessage: async () => {
+            throw new Error("user rejected");
+          },
+        }),
+      ),
+    ).rejects.toThrow(/user rejected/);
   });
 
-  it("clears the server session on logout and tolerates an expired session", async () => {
+  it("reuses an existing server session for the same account", async () => {
+    api.authMe.mockResolvedValue({
+      accountId: "alice.testnet",
+      roles: ["player"],
+      expiresAt: "2026-11-13T00:00:00.000Z",
+    });
+    const wallet = signer();
+    await expect(ensureAuth("alice.testnet", wallet)).resolves.toMatchObject({
+      accountId: "alice.testnet",
+    });
+    expect(wallet.signMessage).not.toHaveBeenCalled();
+  });
+
+  it("clears CSRF and server state on logout, tolerating an expired session", async () => {
     api.authLogout.mockResolvedValueOnce({ ok: true });
     await logout();
     expect(api.authLogout).toHaveBeenCalledTimes(1);
+    expect(api.clearCsrf).toHaveBeenCalledTimes(1);
 
     api.authLogout.mockRejectedValueOnce(new Error("expired"));
     await expect(logout()).resolves.toBeUndefined();
+    expect(api.clearCsrf).toHaveBeenCalledTimes(2);
   });
 });

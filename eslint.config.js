@@ -11,6 +11,8 @@ export default tseslint.config(
       "contract/target/**",
       "server/backups/**",
       "server/demo-accounts.json",
+      "Gridwright Jam Pack/**",
+      "household_*_sprites_v1.0/**",
       "eslint.config.js",
     ],
   },

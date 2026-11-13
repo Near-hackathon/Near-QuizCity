@@ -3,12 +3,14 @@ import type { AppConfig } from "./config.js";
 import { loadDemoAccounts } from "./demo-accounts.js";
 import { publicError } from "./errors.js";
 import { ConfigResponse, DemoAccountsResponse, ErrorResponses } from "./schemas/index.js";
+import { PROTOCOL_VERSION } from "@quiz-city/protocol";
 
 export function registerPublicRoutes(app: FastifyInstance, cfg: AppConfig): void {
   app.get("/config", { schema: { response: { 200: ConfigResponse, ...ErrorResponses } } }, async () => ({
     demoMode: cfg.demoMode,
     networkId: cfg.networkId,
     contractId: cfg.contractId,
+    protocolVersion: PROTOCOL_VERSION,
   }));
 
   app.get(

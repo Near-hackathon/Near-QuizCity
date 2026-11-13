@@ -13,6 +13,7 @@ const base: Job = {
   description: "Read and report",
   payment: "9007199254740993",
   status: "open",
+  reference: "job:job-1",
   chain_tx: null,
 };
 

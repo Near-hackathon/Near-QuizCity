@@ -6,10 +6,10 @@ import { BusinessPanel } from "./BusinessPanel";
 import type { Business } from "../api";
 
 const business: Business = {
-  id: 1,
+  id: "1",
   name: "E2E Cafe",
   owner_account: "alice.testnet",
-  property_id: 1,
+  property_id: "1",
   treasury_wallet: "biz:1",
   revenue_total: "9007199254740993",
   status: "open",

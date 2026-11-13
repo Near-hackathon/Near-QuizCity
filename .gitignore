@@ -11,6 +11,10 @@ target/
 coverage/
 .vite/
 
+# Third-party source art is kept locally and imported selectively into game-owned assets.
+Gridwright Jam Pack/
+household_*_sprites_v1.0/
+
 server/demo-accounts.json
 
 server/backups/

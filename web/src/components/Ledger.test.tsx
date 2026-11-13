@@ -9,10 +9,11 @@ const wallet: Wallet = {
   owner_type: "player",
   balance: "9007199254740993",
   updated_at: "2026-11-13T00:00:00.000Z",
+  last_tx_hash: null,
 };
 
 const tx: Tx = {
-  seq: 1,
+  seq: "1",
   tx_hash: null,
   wallet_from: null,
   wallet_to: "player:alice.testnet",
@@ -20,6 +21,18 @@ const tx: Tx = {
   kind: "mint",
   event_name: "reward_issued",
   reference: "quiz:1",
+  network_id: "testnet",
+  contract_id: "quizcity.testnet",
+  receipt_id: "receipt-1",
+  event_index: 0,
+  event_version: "1.0.0",
+  entity_type: "player",
+  entity_id: "player:alice.testnet",
+  block_height: "1",
+  block_hash: null,
+  chain_timestamp: null,
+  payload: {},
+  observed_at: "2026-11-13T00:00:00.000Z",
   created_at: "2026-11-13T00:00:00.000Z",
 };
 
