@@ -17,6 +17,7 @@
     "@quiz-city/protocol": "*",
     "@sinclair/typebox": "^0.34.52",
     "borsh": "^1.0.0",
+    "buffer": "^6.0.3",
     "near-api-js": "4.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

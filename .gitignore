@@ -15,6 +15,10 @@ coverage/
 Gridwright Jam Pack/
 household_*_sprites_v1.0/
 
+# Rebuilt locally from the licensed source packs with `npm run assets:prepare`.
+# Keep the catalogue, documentation, and loader contract tracked; do not repackage the packs.
+web/public/game-assets/generated/
+
 server/demo-accounts.json
 
 server/backups/

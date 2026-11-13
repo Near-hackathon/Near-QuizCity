@@ -3,6 +3,7 @@ import { compareQc, subtractQc } from "./amount.js";
 import { sql } from "./db.js";
 import { viewContract } from "./near.js";
 import { startWorker, type WorkerHandle } from "./worker.js";
+import { appendJobPresentation } from "./world-projection.js";
 
 const EMPLOYER = "npc:professor-kofi";
 const JOB_PAYMENT = "100";
@@ -112,11 +113,12 @@ export async function tickNpcs(overrides: Partial<NpcDeps> = {}): Promise<NpcTic
       returning id
     `;
 
-    const [existing] = await transaction<{ id: string }[]>`
-      select id from jobs where id = ${id}
-    `;
-    if (inserted.length === 0 && !existing) {
-      return { created: false, reason: "insert conflict" };
+    if (inserted.length > 0) {
+      await appendJobPresentation(transaction, {
+        jobId: id,
+        status: "open",
+        cityTime: deps.now(),
+      });
     }
     await transaction`
       update npc_state
@@ -124,7 +126,11 @@ export async function tickNpcs(overrides: Partial<NpcDeps> = {}): Promise<NpcTic
           last_tick_at = now()
       where npc_id = 'professor-kofi'
     `;
-    return { created: inserted.length > 0, jobId: id };
+    return {
+      created: inserted.length > 0,
+      reason: inserted.length > 0 ? undefined : "already posted",
+      jobId: id,
+    };
   });
 }
 

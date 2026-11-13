@@ -8,6 +8,7 @@ import { classify } from "./sync.js";
 import { projectJobReward, projectQuizReward } from "./projections.js";
 import type { ChainEventPage, ChainEventSource, SourceEvent } from "./chain-source.js";
 import { startWorker, type WorkerHandle } from "./worker.js";
+import { appendResolvedEconomicProjection } from "./world-projection.js";
 
 export type ChainRuntime = { networkId: string; contractId: string };
 
@@ -477,6 +478,7 @@ export async function applyMirrorEvent(
 ): Promise<void> {
   await applyChainOwnedProjection(transaction, event, runtime);
   await applyServerWorkflowProjection(transaction, event, runtime);
+  await appendResolvedEconomicProjection(transaction, event);
 }
 
 function validatePage(page: ChainEventPage, cursorNumber: bigint): bigint {

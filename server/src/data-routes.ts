@@ -1,4 +1,6 @@
 import type { FastifyInstance } from "fastify";
+import type { Sql } from "postgres";
+import { Type } from "@sinclair/typebox";
 import type { Static } from "@sinclair/typebox";
 import { differenceQc, subtractQc } from "./amount.js";
 import { pageParams, pageResult, PageQuery } from "./cursor.js";
@@ -18,11 +20,33 @@ import {
   SnapshotsPage,
   TransactionsPage,
   WalletsPage,
+  WorldBootstrap,
 } from "./schemas/index.js";
 import { syncEconomy } from "./sync.js";
-import { requireRole } from "./auth/plugin.js";
+import { requireAuth, requireRole } from "./auth/plugin.js";
+import { buildWorldBootstrap } from "./world-bootstrap.js";
 
-export function registerDataRoutes(app: FastifyInstance): void {
+export function registerDataRoutes(app: FastifyInstance, dependencies: { db?: Sql } = {}): void {
+  const worldDb = dependencies.db ?? sql;
+  app.get<{ Querystring: { sceneId?: string } }>(
+    "/world/bootstrap",
+    {
+      schema: {
+        querystring: Type.Object(
+          { sceneId: Type.String({ minLength: 1, maxLength: 64, pattern: "^[a-z0-9_-]+$" }) },
+          { additionalProperties: false },
+        ),
+        response: { 200: WorldBootstrap, ...ErrorResponses },
+      },
+    },
+    async (request) => {
+      const auth = requireAuth(request);
+      return buildWorldBootstrap(worldDb, auth.accountId, request.query.sceneId!, {
+        sessionId: auth.sessionTokenHash,
+      });
+    },
+  );
+
   app.get<{ Querystring: Static<typeof PageQuery> }>(
     "/players",
     {

@@ -17,6 +17,9 @@ export type AppConfig = {
   operatorAccount: string;
   operatorPrivateKey: string;
   npcTickMs: number;
+  cityTimezone: string;
+  npcSimulationTickMs: number;
+  npcSimulationCatchupMs: number;
   e2eApi: string;
   enableApiDocs: boolean;
   bodyLimit: number;
@@ -32,6 +35,21 @@ export type AppConfig = {
   chainPageSize: number;
   chainFetchTimeoutMs: number;
   chainMaxRetries: number;
+  worldSocketMaxPayloadBytes: number;
+  worldHeartbeatMs: number;
+  worldHeartbeatTimeoutMs: number;
+  worldMaxSocketsPerAccount: number;
+  worldMaxSocketsPerIp: number;
+  worldMaxQueuedBytes: number;
+  worldReplayLimit: number;
+  worldPresenceTimeoutMs: number;
+  worldFanoutPollMs: number;
+  worldTickMs: number;
+  worldTilesPerTick: number;
+  worldMoveCooldownMs: number;
+  worldMoveBurst: number;
+  worldInteractionCooldownMs: number;
+  worldInteractionBurst: number;
 };
 
 export class ConfigError extends Error {
@@ -206,6 +224,16 @@ function canonicalUint(env: NodeJS.ProcessEnv, name: string): string | null {
   return raw;
 }
 
+function timeZone(env: NodeJS.ProcessEnv): string {
+  const value = env.CITY_TIMEZONE?.trim() || "Africa/Accra";
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: value }).format(new Date());
+  } catch {
+    throw new ConfigError("CITY_TIMEZONE must be a valid IANA timezone");
+  }
+  return value;
+}
+
 function appEnvironment(env: NodeJS.ProcessEnv): AppEnv {
   const raw =
     env.APP_ENV?.trim() ||
@@ -270,6 +298,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     operatorAccount,
     operatorPrivateKey: privateKey(env, "NEAR_OPERATOR_PRIVATE_KEY"),
     npcTickMs: integer(env, "NPC_TICK_MS", 30_000, 1_000, 3_600_000),
+    cityTimezone: timeZone(env),
+    npcSimulationTickMs: integer(env, "NPC_SIMULATION_TICK_MS", 1_000, 100, 60_000),
+    npcSimulationCatchupMs: integer(env, "NPC_SIMULATION_CATCHUP_MS", 300_000, 1_000, 86_400_000),
     e2eApi: url(env, "E2E_API", "http://localhost:8787").toString().replace(/\/+$/, ""),
     enableApiDocs: env.ENABLE_API_DOCS === "1",
     bodyLimit: integer(env, "BODY_LIMIT", 65_536, 1_024, 1_048_576),
@@ -285,7 +316,25 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     chainPageSize: integer(env, "CHAIN_PAGE_SIZE", 100, 1, 1_000),
     chainFetchTimeoutMs: integer(env, "CHAIN_FETCH_TIMEOUT_MS", 5_000, 500, 60_000),
     chainMaxRetries: integer(env, "CHAIN_MAX_RETRIES", 3, 0, 10),
+    worldSocketMaxPayloadBytes: integer(env, "WORLD_WS_MAX_PAYLOAD_BYTES", 16_384, 1_024, 1_048_576),
+    worldHeartbeatMs: integer(env, "WORLD_HEARTBEAT_MS", 30_000, 5_000, 120_000),
+    worldHeartbeatTimeoutMs: integer(env, "WORLD_HEARTBEAT_TIMEOUT_MS", 75_000, 10_000, 600_000),
+    worldMaxSocketsPerAccount: integer(env, "WORLD_MAX_SOCKETS_PER_ACCOUNT", 3, 1, 50),
+    worldMaxSocketsPerIp: integer(env, "WORLD_MAX_SOCKETS_PER_IP", 20, 1, 500),
+    worldMaxQueuedBytes: integer(env, "WORLD_MAX_QUEUED_BYTES", 1_048_576, 16_384, 16_777_216),
+    worldReplayLimit: integer(env, "WORLD_REPLAY_LIMIT", 200, 1, 500),
+    worldPresenceTimeoutMs: integer(env, "WORLD_PRESENCE_TIMEOUT_MS", 60_000, 10_000, 600_000),
+    worldFanoutPollMs: integer(env, "WORLD_FANOUT_POLL_MS", 1_000, 100, 30_000),
+    worldTickMs: integer(env, "WORLD_TICK_MS", 1_000, 100, 30_000),
+    worldTilesPerTick: integer(env, "WORLD_TILES_PER_TICK", 1, 1, 8),
+    worldMoveCooldownMs: integer(env, "WORLD_MOVE_COOLDOWN_MS", 250, 50, 10_000),
+    worldMoveBurst: integer(env, "WORLD_MOVE_BURST", 4, 1, 32),
+    worldInteractionCooldownMs: integer(env, "WORLD_INTERACTION_COOLDOWN_MS", 500, 50, 30_000),
+    worldInteractionBurst: integer(env, "WORLD_INTERACTION_BURST", 2, 1, 16),
   };
+  if (config.worldHeartbeatTimeoutMs <= config.worldHeartbeatMs) {
+    throw new ConfigError("WORLD_HEARTBEAT_TIMEOUT_MS must exceed WORLD_HEARTBEAT_MS");
+  }
   if (config.chainSourceRequired && !config.chainEventSourceUrl) {
     throw new ConfigError("CHAIN_EVENT_SOURCE_URL is required for this environment");
   }
@@ -308,6 +357,24 @@ export function redactedSummary(config: AppConfig): Record<string, unknown> {
     host: config.host,
     webOrigin: config.webOrigin,
     npcTickMs: config.npcTickMs,
+    cityTimezone: config.cityTimezone,
+    npcSimulationTickMs: config.npcSimulationTickMs,
+    npcSimulationCatchupMs: config.npcSimulationCatchupMs,
     e2eApi: config.e2eApi,
+    worldSocketMaxPayloadBytes: config.worldSocketMaxPayloadBytes,
+    worldHeartbeatMs: config.worldHeartbeatMs,
+    worldHeartbeatTimeoutMs: config.worldHeartbeatTimeoutMs,
+    worldMaxSocketsPerAccount: config.worldMaxSocketsPerAccount,
+    worldMaxSocketsPerIp: config.worldMaxSocketsPerIp,
+    worldMaxQueuedBytes: config.worldMaxQueuedBytes,
+    worldReplayLimit: config.worldReplayLimit,
+    worldPresenceTimeoutMs: config.worldPresenceTimeoutMs,
+    worldFanoutPollMs: config.worldFanoutPollMs,
+    worldTickMs: config.worldTickMs,
+    worldTilesPerTick: config.worldTilesPerTick,
+    worldMoveCooldownMs: config.worldMoveCooldownMs,
+    worldMoveBurst: config.worldMoveBurst,
+    worldInteractionCooldownMs: config.worldInteractionCooldownMs,
+    worldInteractionBurst: config.worldInteractionBurst,
   };
 }

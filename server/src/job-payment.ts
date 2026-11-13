@@ -16,6 +16,7 @@ import {
 import { requireExpectedEvent, type ExpectedCall } from "./verify.js";
 import type { ValidatedEvent } from "./event-validation.js";
 import { startWorker, type WorkerHandle } from "./worker.js";
+import { appendResolvedEconomicProjection } from "./world-projection.js";
 
 export type JobPaymentDeps = {
   db: Sql;
@@ -108,6 +109,7 @@ export async function finalizeJobPayment(
     await deps.setMirroredBalance(transaction, employerWallet, employerBalance);
     await deps.insertLedgerEntries(transaction, ledgerEntriesFromEvents(events));
     await projectJobReward(transaction, { jobId: String(job.id), txHash });
+    await appendResolvedEconomicProjection(transaction, proof);
     const [current] = await transaction<JobRow[]>`
       select * from jobs where id = ${String(job.id)}
     `;

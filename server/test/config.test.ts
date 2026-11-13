@@ -152,6 +152,30 @@ test("ports, tick intervals, URLs, and keys are validated", () => {
   assert.equal(loadConfig(env({ E2E_API: "http://localhost:8787/" })).e2eApi, "http://localhost:8787");
 });
 
+test("world websocket limits are bounded and heartbeat timeout exceeds its interval", () => {
+  const config = loadConfig(env());
+  assert.equal(config.worldSocketMaxPayloadBytes, 16_384);
+  assert.equal(config.worldReplayLimit, 200);
+  assert.equal(config.worldMoveBurst, 4);
+  assert.equal(config.worldInteractionBurst, 2);
+  assert.throws(() => loadConfig(env({ WORLD_REPLAY_LIMIT: "501" })), /WORLD_REPLAY_LIMIT must be between/);
+  assert.throws(() => loadConfig(env({ WORLD_MOVE_BURST: "33" })), /WORLD_MOVE_BURST must be between/);
+  assert.throws(
+    () => loadConfig(env({ WORLD_INTERACTION_BURST: "0" })),
+    /WORLD_INTERACTION_BURST must be between/,
+  );
+  assert.throws(
+    () =>
+      loadConfig(
+        env({
+          WORLD_HEARTBEAT_MS: "30000",
+          WORLD_HEARTBEAT_TIMEOUT_MS: "30000",
+        }),
+      ),
+    /must exceed/,
+  );
+});
+
 test("operator credentials are required", () => {
   const { NEAR_OPERATOR_ACCOUNT: _account, ...withoutAccount } = env();
   assert.throws(() => loadConfig(withoutAccount), /NEAR_OPERATOR_ACCOUNT is required/);

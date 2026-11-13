@@ -26,6 +26,7 @@ import { recordOwnershipHistory } from "./chain-ingester.js";
 import { projectQuizReward } from "./projections.js";
 import { insertLedgerEntries } from "./ledger.js";
 import { consumeTransaction, type TransactionContext } from "./transaction-context.js";
+import { appendJobPresentation, appendResolvedEconomicProjection } from "./world-projection.js";
 import {
   attemptExpired,
   reserveQuizReward,
@@ -338,11 +339,15 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
     async (request) => {
       const { id } = request.params;
       const accountId = requireAuth(request).accountId;
-      const [job] = await db`
-      update jobs set employee_account = ${accountId}, status = 'accepted', accepted_at = now()
-      where id = ${id} and status = 'open'
-      returning *
-    `;
+      const job = await db.begin(async (transaction) => {
+        const [updated] = await transaction`
+          update jobs set employee_account = ${accountId}, status = 'accepted', accepted_at = now()
+          where id = ${id} and status = 'open'
+          returning *
+        `;
+        if (updated) await appendJobPresentation(transaction, { jobId: id, status: "accepted" });
+        return updated;
+      });
       if (!job) fail("job is not open", 409);
       return job;
     },
@@ -361,12 +366,16 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       const { id } = request.params;
       const { deliverable } = request.body;
       const accountId = requireAuth(request).accountId;
-      const [job] = await db`
-        update jobs
-        set status = 'submitted', deliverable = ${deliverable}, submitted_at = now()
-        where id = ${id} and status = 'accepted' and employee_account = ${accountId}
-        returning *
-      `;
+      const job = await db.begin(async (transaction) => {
+        const [updated] = await transaction`
+          update jobs
+          set status = 'submitted', deliverable = ${deliverable}, submitted_at = now()
+          where id = ${id} and status = 'accepted' and employee_account = ${accountId}
+          returning *
+        `;
+        if (updated) await appendJobPresentation(transaction, { jobId: id, status: "submitted" });
+        return updated;
+      });
       if (!job) fail("job is not ready to submit", 409);
       return job;
     },
@@ -385,12 +394,16 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       const { id } = request.params;
       const notes = request.body.notes ?? null;
       requireRole(request, ["operator", "admin"]);
-      const [job] = await db`
-        update jobs
-        set status = 'verified', verification_notes = ${notes}, verified_at = now()
-        where id = ${id} and status = 'submitted'
-        returning *
-      `;
+      const job = await db.begin(async (transaction) => {
+        const [updated] = await transaction`
+          update jobs
+          set status = 'verified', verification_notes = ${notes}, verified_at = now()
+          where id = ${id} and status = 'submitted'
+          returning *
+        `;
+        if (updated) await appendJobPresentation(transaction, { jobId: id, status: "verified" });
+        return updated;
+      });
       if (!job) fail("job is not awaiting verification", 409);
       return job;
     },
@@ -918,6 +931,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
           networkId: config.networkId,
           contractId: config.contractId,
         });
+        await appendResolvedEconomicProjection(transaction, proof);
       });
       return { property, seller, price };
     },
@@ -980,6 +994,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
         await setMirroredBalance(transaction, ownerWallet, ownerBalance);
         await setMirroredBalance(transaction, business.treasury, treasuryBalance);
         await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
+        await appendResolvedEconomicProjection(transaction, proof);
       });
       return business;
     },
@@ -1045,6 +1060,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
         await setMirroredBalance(transaction, payer, payerBalance);
         await setMirroredBalance(transaction, business.treasury, treasuryBalance);
         await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
+        await appendResolvedEconomicProjection(transaction, proof);
       });
       return { business, amount: receipt.amount };
     },
@@ -1095,6 +1111,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
           networkId: config.networkId,
           contractId: config.contractId,
         });
+        await appendResolvedEconomicProjection(transaction, proof);
       });
       return { business };
     },

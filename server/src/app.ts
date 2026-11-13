@@ -4,7 +4,9 @@ import helmet from "@fastify/helmet";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify, { type FastifyInstance } from "fastify";
+import type { Sql } from "postgres";
 import type { AppConfig } from "./config.js";
+import type { WorldSocketDeps } from "./world-socket.js";
 import { registerAuthPlugin } from "./auth/plugin.js";
 import { registerAuthRoutes } from "./auth/routes.js";
 import { registerErrorHandler } from "./errors.js";
@@ -21,6 +23,9 @@ export type ReadinessDeps = {
 
 export type BuildAppOptions = {
   readiness?: Partial<ReadinessDeps>;
+  /** One app-scoped database dependency for auth, data routes, and world runtime tests. */
+  database?: Sql;
+  worldSocket?: Partial<Omit<WorldSocketDeps, "db" | "logger">>;
 };
 
 async function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
@@ -129,12 +134,16 @@ async function configureApp(cfg: AppConfig, options: BuildAppOptions): Promise<F
     await app.register(swaggerUi, { routePrefix: "/documentation" });
   }
   await app.register(cors, { origin: cfg.webOrigin, credentials: true });
-  registerAuthPlugin(app, {
-    networkId: cfg.networkId,
-    contractId: cfg.contractId,
-    webOrigin: cfg.webOrigin,
-    rpcUrl: cfg.rpcUrl,
-  });
+  registerAuthPlugin(
+    app,
+    {
+      networkId: cfg.networkId,
+      contractId: cfg.contractId,
+      webOrigin: cfg.webOrigin,
+      rpcUrl: cfg.rpcUrl,
+    },
+    { client: options.database },
+  );
   registerAuthRoutes(app, cfg);
   const defaults = await defaultReadinessDeps(cfg);
   registerHealthRoutes(app, cfg, { ...defaults, ...options.readiness });
@@ -157,11 +166,13 @@ export async function buildPublicApp(
 
 export async function buildApp(cfg: AppConfig, options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = await configureApp(cfg, options);
+  const { registerWorldSocket } = await import("./world-socket.js");
+  await registerWorldSocket(app, cfg, { db: options.database, ...options.worldSocket });
   await app.register(
     async (v1) => {
       registerPublicRoutes(v1, cfg);
       const { registerDataRoutes } = await import("./data-routes.js");
-      registerDataRoutes(v1);
+      registerDataRoutes(v1, { db: options.database });
     },
     { prefix: "/v1" },
   );

@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "phase7-v1",
+  "targetRoot": "web/public/game-assets/generated",
+  "rendering": {
+    "projection": "isometric-2-to-1",
+    "baseScale": "1x",
+    "tileDiamond": [32, 16],
+    "characterCell": [32, 32],
+    "textureFilter": "nearest",
+    "mipmaps": false,
+    "notes": "Use Gridwright 1x assets as the canonical Phaser world scale. Scale the canvas by whole numbers only."
+  },
+  "groups": [
+    {
+      "id": "gridwright-city",
+      "tier": "core",
+      "purpose": "Exterior ground, roads, pavement, modular buildings, street props, vehicles, and shadows.",
+      "sourceRoot": "Gridwright Jam Pack/1 Tilesets & Worlds/Isometric City",
+      "target": "world/city",
+      "licenseFile": "LICENSE.txt",
+      "credit": "Art by Gridwright — https://gridwrightstudio.itch.io",
+      "rules": [
+        {
+          "type": "files",
+          "paths": ["isometric.json", "README.txt", "LICENSE.txt"]
+        },
+        {
+          "type": "directory",
+          "path": "Sheets",
+          "recursive": false,
+          "pattern": "^(blocks|buildings|facade|floors|roads|roofs|rooftop|shadows|storeys|street|vehicles)_1x\\.(png|json)$"
+        }
+      ]
+    },
+    {
+      "id": "gridwright-interiors",
+      "tier": "core",
+      "purpose": "Library, university, apartment, cafe, shop, and quiz-centre greybox interiors.",
+      "sourceRoot": "Gridwright Jam Pack/1 Tilesets & Worlds/Isometric Interiors",
+      "target": "world/interiors",
+      "licenseFile": "LICENSE.txt",
+      "credit": "Art by Gridwright — https://gridwrightstudio.itch.io",
+      "rules": [
+        {
+          "type": "files",
+          "paths": ["isometric.json", "README.txt", "LICENSE.txt"]
+        },
+        {
+          "type": "directory",
+          "path": "Sheets",
+          "recursive": false,
+          "pattern": "^(bedroom|decor|doors|floors|kitchen|living|shadows|walls)_1x\\.(png|json)$"
+        }
+      ]
+    },
+    {
+      "id": "gridwright-city-people",
+      "tier": "core",
+      "purpose": "Player/NPC placeholder characters with idle, walk, and phone animations in eight directions.",
+      "sourceRoot": "Gridwright Jam Pack/2 Characters & Monsters/Isometric City People",
+      "target": "characters/city-people",
+      "licenseFile": "LICENSE.txt",
+      "credit": "Art by Gridwright — https://gridwrightstudio.itch.io",
+      "rules": [
+        {
+          "type": "files",
+          "paths": ["characters.json", "README.txt", "LICENSE.txt", "Effects/1x/shadow_small.png"]
+        },
+        {
+          "type": "directory",
+          "path": "Sheets/1x",
+          "recursive": true,
+          "pattern": "\\.(png|json)$"
+        }
+      ]
+    },
+    {
+      "id": "gridwright-cozy-ui",
+      "tier": "core",
+      "purpose": "In-game cursor, prompt, status, and compact HUD pieces; React remains responsible for accessible forms/dialogs.",
+      "sourceRoot": "Gridwright Jam Pack/3 Game UI/Cozy UI",
+      "target": "ui/cozy",
+      "licenseFile": "LICENSE.txt",
+      "creditRequired": true,
+      "credit": "Art by Gridwright — https://gridwrightstudio.itch.io",
+      "rules": [
+        {
+          "type": "files",
+          "paths": ["cozy_ui.json", "README.txt", "LICENSE.txt"]
+        },
+        {
+          "type": "directory",
+          "path": "Sheets/1x",
+          "recursive": true,
+          "pattern": "\\.png$"
+        },
+        {
+          "type": "directory",
+          "path": "Icons/1x",
+          "recursive": true,
+          "pattern": "\\.png$"
+        },
+        {
+          "type": "directory",
+          "path": "Cursors/1x",
+          "recursive": true,
+          "pattern": "\\.png$"
+        }
+      ]
+    },
+    {
+      "id": "gridwright-pixel-font",
+      "tier": "core",
+      "purpose": "Small debug/world-label bitmap font. Normal accessible UI continues to use browser text.",
+      "sourceRoot": "Gridwright Jam Pack/7 Fonts/Pixel Fonts 2",
+      "target": "fonts/gridwright-micro",
+      "licenseFile": "LICENSE.txt",
+      "credit": "Fonts by Gridwright — https://gridwrightstudio.itch.io",
+      "rules": [
+        {
+          "type": "files",
+          "paths": [
+            "fonts.json",
+            "README.txt",
+            "LICENSE.txt",
+            "Bitmap/1x/gridwright_micro_11px.fnt",
+            "Bitmap/1x/gridwright_micro_11px.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "household-essentials",
+      "tier": "optional-household",
+      "purpose": "Optional large-scale household props for later visual conversion tests.",
+      "sourceRoot": "household_essentials_sprites_v1.0",
+      "target": "optional-household/essentials",
+      "licenseFile": "LICENSE.txt",
+      "credit": "Designed by PtDesigns, Packaged with AI tools — CC0-1.0",
+      "rules": [
+        {
+          "type": "files",
+          "paths": ["atlas.png", "manifest.json", "README.txt", "LICENSE.txt"]
+        }
+      ]
+    },
+    {
+      "id": "household-kitchen-dining",
+      "tier": "optional-household",
+      "purpose": "Optional kitchen, cafe, restaurant, and apartment props for later visual conversion tests.",
+      "sourceRoot": "household_kitchen_dining_sprites_v1.0",
+      "target": "optional-household/kitchen-dining",
+      "licenseFile": "LICENSE.txt",
+      "credit": "Designed by PtDesigns, Packaged with AI tools — CC0-1.0",
+      "rules": [
+        {
+          "type": "files",
+          "paths": ["atlas.png", "manifest.json", "README.txt", "LICENSE.txt"]
+        }
+      ]
+    },
+    {
+      "id": "household-living-bedroom",
+      "tier": "optional-household",
+      "purpose": "Optional apartment, library lounge, and office props for later visual conversion tests.",
+      "sourceRoot": "household_living_bedroom_sprites_v1.0",
+      "target": "optional-household/living-bedroom",
+      "licenseFile": "LICENSE.txt",
+      "credit": "Designed by PtDesigns, Packaged with AI tools — CC0-1.0",
+      "rules": [
+        {
+          "type": "files",
+          "paths": ["atlas.png", "manifest.json", "README.txt", "LICENSE.txt"]
+        }
+      ]
+    },
+    {
+      "id": "household-bathroom-laundry",
+      "tier": "optional-household",
+      "purpose": "Optional apartment background props for later visual conversion tests.",
+      "sourceRoot": "household_bathroom_laundry_sprites_v1.0",
+      "target": "optional-household/bathroom-laundry",
+      "licenseFile": "LICENSE.txt",
+      "credit": "Designed by PtDesigns, Packaged with AI tools — CC0-1.0",
+      "rules": [
+        {
+          "type": "files",
+          "paths": ["atlas.png", "manifest.json", "README.txt", "LICENSE.txt"]
+        }
+      ]
+    },
+    {
+      "id": "household-electronics-details",
+      "tier": "optional-household",
+      "purpose": "Optional office, university, library, and apartment electronics for later visual conversion tests.",
+      "sourceRoot": "household_electronics_home_details_sprites_v1.0",
+      "target": "optional-household/electronics-details",
+      "licenseFile": "LICENSE.txt",
+      "credit": "Designed by PtDesigns, Packaged with AI tools — CC0-1.0",
+      "rules": [
+        {
+          "type": "files",
+          "paths": ["atlas.png", "manifest.json", "README.txt", "LICENSE.txt"]
+        }
+      ]
+    }
+  ]
+}

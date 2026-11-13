@@ -227,10 +227,10 @@ test("world seed is idempotent and the demo city is connected", async () => {
         (select count(*)::int from world_events) as events
     `;
     assert.deepEqual(counts[0], {
-      scenes: 3,
-      spawns: 5,
-      buildings: 2,
-      schedules: 2,
+      scenes: 6,
+      spawns: 21,
+      buildings: 5,
+      schedules: 6,
       runtime: 1,
       events: 1,
     });
@@ -244,7 +244,7 @@ test("world seed is idempotent and the demo city is connected", async () => {
        and s.y = b.entrance_y
        and s.kind = 'door'
     `;
-    assert.equal(entrances[0].count, 2);
+    assert.equal(entrances[0].count, 5);
 
     const doors = await sql<{ count: number }[]>`
       select count(*)::int as count
@@ -254,13 +254,13 @@ test("world seed is idempotent and the demo city is connected", async () => {
         and door.destination_scene_id is not null
         and destination.scene_id = door.destination_scene_id
     `;
-    assert.equal(doors[0].count, 4);
+    assert.equal(doors[0].count, 10);
 
     const schedules = await sql<{ npc_id: string; sequence: number; valid: boolean }[]>`
       select npc_id, sequence, end_minute > start_minute as valid
       from npc_schedules order by npc_id, sequence
     `;
-    assert.equal(schedules.length, 2);
+    assert.equal(schedules.length, 6);
     assert.ok(schedules.every((schedule) => schedule.valid));
 
     const [runtime] = await sql`

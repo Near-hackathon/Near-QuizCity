@@ -13,6 +13,8 @@ import { viewContract } from "./near.js";
 import { readChainBalance, setMirroredBalance } from "./sync.js";
 import { verifyExpectedFunctionCall } from "./verify.js";
 import { syncEconomy } from "./sync.js";
+import { startWorldMovementWorker } from "./world-tick.js";
+import { startNpcSimulationWorker } from "./world-simulation.js";
 
 const app = await buildApp(config);
 const stops: Array<() => void | Promise<void>> = [];
@@ -37,6 +39,24 @@ try {
     onError: (error) => app.log.warn({ err: error }, "npc tick failed"),
   });
   stops.push(() => stopNpc.stop());
+
+  const worldMovement = startWorldMovementWorker({
+    db: sql,
+    intervalMs: config.worldTickMs,
+    tilesPerTick: config.worldTilesPerTick,
+    onError: (error) => app.log.warn({ err: error }, "world movement tick failed"),
+  });
+  stops.push(() => worldMovement.stop());
+
+  const npcSimulation = startNpcSimulationWorker({
+    db: sql,
+    intervalMs: config.npcSimulationTickMs,
+    timeZone: config.cityTimezone,
+    tilesPerTick: config.worldTilesPerTick,
+    catchupAfterMs: config.npcSimulationCatchupMs,
+    onError: (error) => app.log.warn({ err: error }, "npc simulation tick failed"),
+  });
+  stops.push(() => npcSimulation.stop());
 
   const chainRuntime = { networkId: config.networkId, contractId: config.contractId };
   if (config.chainEventSourceUrl) {
@@ -85,6 +105,7 @@ try {
     { intervalMs: 60_000, onError: (error) => app.log.warn({ err: error }, "quiz reconciliation failed") },
   );
   stops.push(() => quizWorker.stop());
+  stops.push(() => app.worldSocket.close());
 } catch (error) {
   app.log.error(error);
   await closeDb();

@@ -1,4 +1,5 @@
 import type { Sql, TransactionSql } from "postgres";
+import { appendJobPresentation } from "./world-projection.js";
 
 export type JobRow = Record<string, unknown>;
 
@@ -11,7 +12,7 @@ export function jobPaymentReference(jobId: string): string {
  * job into payment_pending and receives the row. The attempt row is written in
  * the same caller-owned transaction.
  */
-export async function reserveJobPayment(client: Sql | TransactionSql, jobId: string): Promise<JobRow | null> {
+export async function reserveJobPayment(client: TransactionSql, jobId: string): Promise<JobRow | null> {
   const [job] = await client<JobRow[]>`
     update jobs
     set status = 'payment_pending',
@@ -31,6 +32,7 @@ export async function reserveJobPayment(client: Sql | TransactionSql, jobId: str
     values (${jobId}, ${Number(job.payment_attempts)}, ${String(job.payment_reference)}, 'pending')
     on conflict (job_id, attempt) do nothing
   `;
+  await appendJobPresentation(client, { jobId, status: "payment_pending" });
   return job;
 }
 
@@ -40,7 +42,7 @@ export function safeErrorMessage(error: unknown): string {
 }
 
 export async function markJobPaymentAttempt(
-  client: Sql | TransactionSql,
+  client: TransactionSql,
   input: {
     jobId: string;
     attempt: number;
@@ -83,6 +85,19 @@ export async function markJobPaymentAttempt(
       payment_reconciliation_reason = ${input.reason ?? null}
     where id = ${input.jobId}
   `;
+  const presentationStatus =
+    input.state === "unknown"
+      ? "payment_unknown"
+      : input.state === "failed" || input.state === "rejected"
+        ? "payment_failed"
+        : null;
+  if (presentationStatus) {
+    await appendJobPresentation(client, {
+      jobId: input.jobId,
+      status: presentationStatus,
+      txHash: input.txHash ?? null,
+    });
+  }
 }
 
 /**
