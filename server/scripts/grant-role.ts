@@ -1,4 +1,5 @@
 import { ensureRole } from "../src/auth/repository.js";
+import { assertConfirmed, assertLocalOnly, parseOperatorRole } from "../src/script-guards.js";
 import { config } from "../src/runtime-config.js";
 import { sql } from "../src/db.js";
 
@@ -20,19 +21,16 @@ if (unknown.length > 0 || !account || !role) {
   );
   process.exit(2);
 }
-if (config.appEnv !== "local" && config.appEnv !== "test") {
-  console.error(`refusing role grant for APP_ENV=${config.appEnv}; only local and test are allowed`);
+let parsedRole;
+try {
+  assertLocalOnly(config.appEnv, "role grant");
+  assertConfirmed(confirmed, "--confirm-grant-role");
+  parsedRole = parseOperatorRole(role);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : "invalid role grant");
   process.exit(1);
-}
-if (!confirmed) {
-  console.error("refusing role grant without --confirm-grant-role");
-  process.exit(1);
-}
-if (role !== "player" && role !== "operator" && role !== "admin") {
-  console.error("role must be player, operator, or admin");
-  process.exit(2);
 }
 
-await ensureRole(sql, account, role);
+await ensureRole(sql, account, parsedRole);
 console.log(`granted ${role} to ${account}`);
 await sql.end();

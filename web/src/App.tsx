@@ -92,6 +92,11 @@ export function App() {
     }
   }
 
+  function retryRefresh() {
+    setNotice(null);
+    void refresh().catch((err: Error) => setNotice({ kind: "err", text: err.message }));
+  }
+
   const me = session?.accountId ?? null;
   const selected = properties.find((property) => property.id === selectedId) ?? null;
   const selectedBusiness = selected
@@ -221,6 +226,11 @@ export function App() {
             >
               view on chain
             </a>
+          )}
+          {notice.kind === "err" && (
+            <button className="btn ghost small" onClick={retryRefresh}>
+              Retry
+            </button>
           )}
           <button className="notice-close" onClick={() => setNotice(null)}>
             ×

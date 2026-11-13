@@ -126,6 +126,14 @@ export async function reconcileJob(
 
   let txHash = typeof job.chain_tx === "string" ? job.chain_tx : null;
   if (!txHash) {
+    const [attemptRow] = await deps.db<{ tx_hash: string | null }[]>`
+      select tx_hash from job_payment_attempts
+      where job_id = ${String(job.id)} and attempt = ${attempt}
+      order by updated_at desc limit 1
+    `;
+    txHash = attemptRow?.tx_hash ?? null;
+  }
+  if (!txHash) {
     const [event] = await deps.db<{ tx_hash: string | null }[]>`
       select tx_hash from transactions
       where reference = ${reference} and event_name = 'job_reward'

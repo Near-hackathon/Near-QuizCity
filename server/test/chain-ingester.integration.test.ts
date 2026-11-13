@@ -976,3 +976,27 @@ test("retry rewinds only the failed source and failed reprocessing stays unresol
     );
   });
 });
+
+test("a second ingester cannot enter the same source page concurrently", async () => {
+  await withTestSchema(async ({ sql, schema }) => {
+    await migrate(sql);
+    const holder = connectTestClient(testDatabaseUrl(), schema);
+    try {
+      await holder.unsafe("begin");
+      await holder`
+        select pg_advisory_xact_lock(
+          hashtext(current_schema() || ':' || ${"quizcity-ingest:testnet:quizcity.testnet:fixture"})
+        )
+      `;
+      await assert.rejects(
+        ingestPage(sql, new FixtureSource({ "10": fullCreationPage() }), runtime, {
+          startBlock: "10",
+        }),
+        /another ingestion page/,
+      );
+    } finally {
+      await holder.unsafe("rollback").catch(() => {});
+      await holder.end();
+    }
+  });
+});

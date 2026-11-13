@@ -2615,4 +2615,134 @@ mod tests {
             "next.testnet"
         );
     }
+
+    #[test]
+    fn privileged_seeding_and_property_listing_require_the_right_account() {
+        let mut contract = setup();
+        as_account("intruder.testnet");
+        let wallets = contract.get_wallet_count();
+        let properties = contract.get_stats().properties;
+        expect_panic(|| {
+            contract.create_wallet("gov:intruder".to_string(), U128(10));
+        });
+        expect_panic(|| {
+            contract.create_property(
+                "plot".to_string(),
+                "knowledge".to_string(),
+                9,
+                9,
+                "gov:intruder".to_string(),
+                U128(10),
+            );
+        });
+        assert_eq!(contract.get_wallet_count(), wallets);
+        assert_eq!(contract.get_stats().properties, properties);
+
+        as_account("alice.testnet");
+        contract.register_player("alice".to_string());
+        contract.claim_starter();
+        expect_panic(|| {
+            contract.list_property(1, U128(400));
+        });
+        expect_panic(|| {
+            contract.cancel_property_listing(1);
+        });
+
+        as_account("quizcity.testnet");
+        contract.list_property(1, U128(400));
+        as_account("alice.testnet");
+        contract.buy_property(1);
+        as_account("bob.testnet");
+        contract.register_player("bob".to_string());
+        expect_panic(|| {
+            contract.list_property(1, U128(500));
+        });
+
+        as_account("alice.testnet");
+        contract.list_property(1, U128(500));
+        as_account("bob.testnet");
+        expect_panic(|| {
+            contract.cancel_property_listing(1);
+        });
+        as_account("alice.testnet");
+        contract.cancel_property_listing(1);
+        assert!(!contract.get_property(1).unwrap().for_sale);
+    }
+
+    #[test]
+    fn business_creation_and_transfer_require_the_current_owner() {
+        let mut contract = setup();
+        as_account("alice.testnet");
+        contract.register_player("alice".to_string());
+        contract.claim_starter();
+        as_account("quizcity.testnet");
+        contract.list_property(1, U128(300));
+        as_account("alice.testnet");
+        contract.buy_property(1);
+        as_account("bob.testnet");
+        contract.register_player("bob".to_string());
+        contract.claim_starter();
+        expect_panic(|| {
+            contract.create_business(1, "Intruder Cafe".to_string());
+        });
+        expect_panic(|| {
+            contract.transfer_business(1, account("bob.testnet"));
+        });
+
+        as_account("alice.testnet");
+        let business_id = contract.create_business(1, "Cafe".to_string());
+        as_account("bob.testnet");
+        expect_panic(|| {
+            contract.transfer_business(business_id, account("bob.testnet"));
+        });
+        as_account("alice.testnet");
+        contract.transfer_business(business_id, account("bob.testnet"));
+        assert_eq!(
+            contract.get_business(business_id).unwrap().owner,
+            "bob.testnet"
+        );
+    }
+
+    #[test]
+    fn operator_change_cancellation_is_operator_only_and_clears_pending() {
+        let mut contract = setup();
+        as_account("quizcity.testnet");
+        contract.propose_operator(account("next-operator.testnet"));
+        as_account("alice.testnet");
+        expect_panic(|| {
+            contract.cancel_operator_change();
+        });
+        assert_eq!(
+            contract.get_stats().pending_operator,
+            Some(account("next-operator.testnet"))
+        );
+        as_account("quizcity.testnet");
+        contract.cancel_operator_change();
+        assert_eq!(contract.get_stats().pending_operator, None);
+        expect_panic(|| {
+            contract.accept_operator();
+        });
+    }
+
+    #[test]
+    fn duplicate_registration_and_zero_transfer_preserve_state() {
+        let mut contract = setup();
+        as_account("alice.testnet");
+        contract.register_player("alice".to_string());
+        let players = contract.get_stats().players;
+        expect_panic(|| {
+            contract.register_player("alice-again".to_string());
+        });
+        assert_eq!(contract.get_stats().players, players);
+
+        contract.claim_starter();
+        let balance = contract.get_balance("player:alice.testnet".to_string()).0;
+        expect_panic(|| {
+            contract.transfer_qc("npc:professor-kofi".to_string(), U128(0));
+        });
+        assert_eq!(
+            contract.get_balance("player:alice.testnet".to_string()).0,
+            balance
+        );
+    }
 }

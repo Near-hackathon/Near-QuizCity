@@ -8,7 +8,7 @@ import type { AppConfig } from "./config.js";
 import { registerAuthPlugin } from "./auth/plugin.js";
 import { registerAuthRoutes } from "./auth/routes.js";
 import { registerErrorHandler } from "./errors.js";
-import { ajvOptions } from "./fastify-options.js";
+import { ajvOptions, serializerOptions } from "./fastify-options.js";
 import { registerRateLimit } from "./rate-limit.js";
 import { registerPublicRoutes } from "./public-routes.js";
 import { ErrorResponses, HealthResponse } from "./schemas/index.js";
@@ -107,8 +107,10 @@ async function configureApp(cfg: AppConfig, options: BuildAppOptions): Promise<F
     logger: cfg.appEnv !== "test",
     bodyLimit: cfg.bodyLimit,
     trustProxy: cfg.trustProxy,
+    forceCloseConnections: true,
     genReqId: () => `req-${randomUUID()}`,
     ajv: { customOptions: ajvOptions },
+    serializerOpts: serializerOptions,
   });
   app.addHook("onSend", async (request, reply, payload) => {
     reply.header("x-request-id", request.id);

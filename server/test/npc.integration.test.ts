@@ -144,3 +144,32 @@ test("provider failure does not create work and the worker stops cleanly", async
     assert.equal(reads, afterStop);
   });
 });
+
+test("NPC boundaries cover zero, exact, one-short, and no-template decisions", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await migrate(sql);
+
+    await seedNpc(sql, "1000");
+    const zero = await tickNpcs(deps(sql, "0"));
+    assert.equal(zero.created, false);
+    assert.equal(zero.reason, "insufficient budget");
+
+    await seedNpc(sql, "100");
+    const short = await tickNpcs(deps(sql, "99"));
+    assert.equal(short.created, false);
+    assert.equal(short.reason, "insufficient budget");
+
+    const exact = await tickNpcs(deps(sql, "100"));
+    assert.equal(exact.created, true);
+    const [jobs] = await sql`select count(*)::int as count from jobs`;
+    assert.equal(jobs.count, 1);
+
+    await sql`delete from jobs`;
+    await sql`update npc_state set state = '{}'::jsonb, budget = '1000'`;
+    const noTemplate = await tickNpcs({ ...deps(sql, "1000"), templates: [] });
+    assert.equal(noTemplate.created, false);
+    assert.equal(noTemplate.reason, "no job template");
+    const [after] = await sql`select count(*)::int as count from jobs`;
+    assert.equal(after.count, 0);
+  });
+});

@@ -469,6 +469,12 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
             nextCheckAt: nextCheckAt(new Date(), attempt),
             incrementCheck: true,
           });
+          if (result.txHash) {
+            await transaction`
+              update jobs set chain_tx = coalesce(chain_tx, ${result.txHash})
+              where id = ${id}
+            `;
+          }
         });
         fail("job payment outcome is unknown", 502);
       }

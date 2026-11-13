@@ -55,6 +55,7 @@ export type Job = {
     | "submitted"
     | "verified"
     | "payment_pending"
+    | "payment_unknown"
     | "paid"
     | "payment_failed"
     | "cancelled";
@@ -132,6 +133,18 @@ export type AuthVerify = AuthMe & { csrfToken: string };
 
 export type Page<T> = { items: T[]; nextCursor: string | null };
 
+export type ApiRequestOptions = {
+  signal?: AbortSignal;
+};
+
+function pageQuery(options: { cursor?: string | null; limit?: number } = {}): string {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.cursor !== undefined && options.cursor !== null) params.set("cursor", options.cursor);
+  const query = params.toString();
+  return query.length > 0 ? `?${query}` : "";
+}
+
 function csrfToken(): string | null {
   try {
     return localStorage.getItem(CSRF_KEY);
@@ -148,7 +161,7 @@ function storeCsrf(token: string): void {
   }
 }
 
-async function request<T>(path: string, init: RequestInit): Promise<T> {
+async function request<T>(path: string, init: RequestInit, options: ApiRequestOptions = {}): Promise<T> {
   const headers = new Headers(init.headers);
   const csrf = csrfToken();
   if (csrf) headers.set("x-csrf-token", csrf);
@@ -156,6 +169,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
     ...init,
     headers,
     credentials: "include",
+    signal: options.signal,
   });
   if (!res.ok) {
     let message = `${path} failed: ${res.status}`;
@@ -170,16 +184,34 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function get<T>(path: string): Promise<T> {
-  return request<T>(path, { method: "GET" });
+async function get<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  return request<T>(path, { method: "GET" }, options);
 }
 
-async function post<T>(path: string, body: unknown = {}): Promise<T> {
-  return request<T>(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+async function post<T>(path: string, body: unknown = {}, options: ApiRequestOptions = {}): Promise<T> {
+  return request<T>(
+    path,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    options,
+  );
+}
+
+type PageOptions = ApiRequestOptions & { cursor?: string | null; limit?: number };
+
+async function page<T>(path: string, options: PageOptions = {}): Promise<Page<T>> {
+  const result = await get<Page<T>>(`${path}${pageQuery(options)}`, { signal: options.signal });
+  if (
+    !result ||
+    !Array.isArray(result.items) ||
+    !(result.nextCursor === null || typeof result.nextCursor === "string")
+  ) {
+    throw new Error("malformed page response");
+  }
+  return result;
 }
 
 export const api = {
@@ -200,12 +232,21 @@ export const api = {
     get<{ account_id: string; username: string; wallet: { balance: string } | null }>(
       `/v1/players/${accountId}`,
     ),
-  properties: () => get<Page<Property>>("/v1/properties").then((page) => page.items),
-  wallets: () => get<Page<Wallet>>("/v1/wallets").then((page) => page.items),
-  transactions: () => get<Page<Tx>>("/v1/transactions").then((page) => page.items),
-  economy: () => get<Economy>("/v1/economy"),
-  jobs: () => get<Page<Job>>("/v1/jobs").then((page) => page.items),
-  businesses: () => get<Page<Business>>("/v1/businesses").then((page) => page.items),
+  propertyPage: (options: PageOptions = {}) => page<Property>("/v1/properties", options),
+  walletPage: (options: PageOptions = {}) => page<Wallet>("/v1/wallets", options),
+  transactionPage: (options: PageOptions = {}) => page<Tx>("/v1/transactions", options),
+  jobPage: (options: PageOptions = {}) => page<Job>("/v1/jobs", options),
+  businessPage: (options: PageOptions = {}) => page<Business>("/v1/businesses", options),
+  properties: (options: ApiRequestOptions = {}) =>
+    page<Property>("/v1/properties", options).then((result) => result.items),
+  wallets: (options: ApiRequestOptions = {}) =>
+    page<Wallet>("/v1/wallets", options).then((result) => result.items),
+  transactions: (options: ApiRequestOptions = {}) =>
+    page<Tx>("/v1/transactions", options).then((result) => result.items),
+  economy: (options: ApiRequestOptions = {}) => get<Economy>("/v1/economy", options),
+  jobs: (options: ApiRequestOptions = {}) => page<Job>("/v1/jobs", options).then((result) => result.items),
+  businesses: (options: ApiRequestOptions = {}) =>
+    page<Business>("/v1/businesses", options).then((result) => result.items),
   acceptJob: (id: string) => post<Job>(`/v1/jobs/${id}/accept`, {}),
   submitJob: (id: string, deliverable: string) => post<Job>(`/v1/jobs/${id}/submit`, { deliverable }),
   verifyJob: (id: string, notes?: string) => post<Job>(`/v1/jobs/${id}/verify`, { notes }),

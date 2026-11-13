@@ -269,3 +269,30 @@ test("supply math is exact above the safe integer range and reports mismatches",
     assert.equal(mismatch.difference, "1");
   });
 });
+
+test("sync skips while a rebuild holds the shared guard", async () => {
+  await withTestSchema(async ({ sql, schema }) => {
+    await migrate(sql);
+    const holder = connectTestClient(testDatabaseUrl(), schema);
+    try {
+      await holder`
+        select pg_advisory_lock(
+          hashtext(current_schema() || ':' || ${"quizcity-rebuild:testnet:quizcity.testnet"})
+        )
+      `;
+      const result = await syncEconomy(deps(sql));
+      assert.equal(result.skipped, true);
+      const [wallets] = await sql`select count(*)::int as count from wallets`;
+      assert.equal(wallets.count, 0);
+      const [runs] = await sql`select count(*)::int as count from sync_runs`;
+      assert.equal(runs.count, 1);
+    } finally {
+      await holder`
+        select pg_advisory_unlock(
+          hashtext(current_schema() || ':' || ${"quizcity-rebuild:testnet:quizcity.testnet"})
+        )
+      `;
+      await holder.end();
+    }
+  });
+});

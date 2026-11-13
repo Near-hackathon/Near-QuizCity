@@ -49,3 +49,24 @@ test("a shutdown timeout is reported through onError", async () => {
   await shutdown("SIGTERM");
   assert.match(String(reported), /timed out/);
 });
+
+test("a failing worker stop still closes the database and reports the error", async () => {
+  const errors: unknown[] = [];
+  let closed = false;
+  const shutdown = createShutdown({
+    timeoutMs: 1_000,
+    app: { close: async () => true },
+    stop: [
+      () => {
+        throw new Error("worker stop failed");
+      },
+    ],
+    closeDb: async () => {
+      closed = true;
+    },
+    onError: (error) => errors.push(error),
+  });
+  await shutdown();
+  assert.equal(closed, true);
+  assert.match(String(errors[0]), /worker stop failed/);
+});

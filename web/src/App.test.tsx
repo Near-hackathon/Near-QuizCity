@@ -1,0 +1,105 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Property } from "./api";
+
+const api = vi.hoisted(() => ({
+  config: vi.fn(),
+  properties: vi.fn(),
+  businesses: vi.fn(),
+  jobs: vi.fn(),
+  wallets: vi.fn(),
+  transactions: vi.fn(),
+  economy: vi.fn(),
+  authMe: vi.fn(),
+}));
+const chain = vi.hoisted(() => ({
+  call: vi.fn(),
+  view: vi.fn(),
+  loadSession: vi.fn(() => null as null | { accountId: string; publicKey: string; secretKey: string }),
+  saveSession: vi.fn(),
+  clearSession: vi.fn(),
+}));
+const auth = vi.hoisted(() => ({ ensureAuth: vi.fn(), logout: vi.fn() }));
+
+vi.mock("./api", () => ({ api }));
+vi.mock("./chain", () => chain);
+vi.mock("./auth", () => auth);
+
+const { App } = await import("./App");
+
+const property: Property = {
+  id: 1,
+  district: "knowledge",
+  x: 0,
+  y: 0,
+  owner_wallet: "player:alice.testnet",
+  property_type: "venue",
+  price: "300",
+  for_sale: true,
+  transfer_count: 1,
+};
+
+beforeEach(() => {
+  Object.values(api).forEach((mock) => mock.mockReset());
+  Object.values(chain).forEach((mock) => mock.mockReset());
+  Object.values(auth).forEach((mock) => mock.mockReset());
+  chain.loadSession.mockReturnValue(null);
+  api.config.mockResolvedValue({ demoMode: false, networkId: "testnet", contractId: "quizcity.testnet" });
+  api.properties.mockResolvedValue([]);
+  api.businesses.mockResolvedValue([]);
+  api.jobs.mockResolvedValue([]);
+  api.wallets.mockResolvedValue([]);
+  api.transactions.mockResolvedValue([]);
+  api.economy.mockResolvedValue({
+    circulating_qc: "9007199254740993",
+    mirrored_wallet_sum: "9007199254740993",
+    supply_difference: "0",
+    players: 2,
+    properties: 1,
+    businesses: 1,
+    transactions: 8,
+  });
+});
+
+describe("App", () => {
+  it("renders the read-only dashboard with exact economy values", async () => {
+    const { container } = render(<App />);
+    expect(await screen.findByText("Knowledge / Commercial District")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("9,007,199,254,740,993")).toBeInTheDocument());
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/ed25519:|csrf|signature/i);
+  });
+
+  it("shows a safe API failure notice and recovers on explicit retry", async () => {
+    const user = userEvent.setup();
+    api.properties.mockRejectedValueOnce(new Error("api unavailable"));
+    render(<App />);
+    expect(await screen.findByText("api unavailable")).toBeInTheDocument();
+
+    api.properties.mockResolvedValue([property]);
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("venue")).toBeInTheDocument();
+  });
+
+  it("shows an authenticated session transition and auth failure safely", async () => {
+    chain.loadSession.mockReturnValue({
+      accountId: "alice.testnet",
+      publicKey: "ed25519:11111111111111111111111111111111",
+      secretKey: "ed25519:22222222222222222222222222222222",
+    });
+    auth.ensureAuth.mockResolvedValue({
+      accountId: "alice.testnet",
+      roles: ["player"],
+      expiresAt: "2026-11-13T00:00:00.000Z",
+    });
+    const { container, unmount } = render(<App />);
+    expect(await screen.findByRole("button", { name: "Switch account" })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/ed25519:|signature/i);
+    unmount();
+
+    auth.ensureAuth.mockRejectedValueOnce(new Error("wallet rejected"));
+    render(<App />);
+    expect(await screen.findByText("sign-in failed: wallet rejected")).toBeInTheDocument();
+  });
+});

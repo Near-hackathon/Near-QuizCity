@@ -4,6 +4,19 @@ import { viewContract } from "../src/near.js";
 
 import { config } from "../src/runtime-config.js";
 
+if (process.env.RUN_TESTNET_SMOKE !== "1") {
+  console.error("refusing live testnet run; set RUN_TESTNET_SMOKE=1 explicitly");
+  process.exit(2);
+}
+if (config.appEnv !== "local" && config.appEnv !== "test") {
+  console.error(`refusing live testnet run for APP_ENV=${config.appEnv}`);
+  process.exit(2);
+}
+if (config.networkId !== "testnet") {
+  console.error(`refusing live smoke run for network ${config.networkId}`);
+  process.exit(2);
+}
+
 const API = config.e2eApi;
 const CONTRACT = config.contractId;
 const RPC = config.rpcUrl;

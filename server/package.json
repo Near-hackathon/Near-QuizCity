@@ -11,9 +11,7 @@
     "db:seed": "node --env-file=.env --import tsx scripts/seed-demo.ts",
     "db:test": "node --env-file-if-exists=.env --import tsx --test test/migrations.integration.test.ts test/ledger.integration.test.ts test/phase2.integration.test.ts test/routes.integration.test.ts test/auth.integration.test.ts test/chain-ingester.integration.test.ts test/job-payment.integration.test.ts test/quiz-reward.integration.test.ts test/sync.integration.test.ts test/npc.integration.test.ts test/transaction-context.integration.test.ts",
     "chain:seed": "node --env-file=.env --import tsx scripts/chain-seed.ts",
-    "e2e": "node --env-file=.env --import tsx scripts/e2e.ts",
-    "exploit": "node --env-file=.env --import tsx scripts/exploit.ts",
-    "test": "node --import tsx --test test/config.test.ts test/demo.test.ts test/rotation.test.ts test/pagination.test.ts test/event-ledger.test.ts test/access-key.test.ts test/migrations.test.ts test/ledger.test.ts test/event-validation.test.ts test/verify.test.ts test/amount.test.ts test/schema.test.ts test/lifecycle.test.ts test/cursor.test.ts test/api-hardening.test.ts test/nep413.test.ts test/chain-source.test.ts test/readiness.test.ts test/worker.test.ts",
+    "test": "node --import tsx --test test/config.test.ts test/demo.test.ts test/rotation.test.ts test/pagination.test.ts test/event-ledger.test.ts test/access-key.test.ts test/migrations.test.ts test/ledger.test.ts test/event-validation.test.ts test/verify.test.ts test/amount.test.ts test/schema.test.ts test/lifecycle.test.ts test/cursor.test.ts test/api-hardening.test.ts test/nep413.test.ts test/chain-source.test.ts test/readiness.test.ts test/worker.test.ts test/operator.test.ts test/script-guards.test.ts test/db-test-utils.test.ts test/e2e-cleanup.test.ts",
     "demo-keys:rotate": "node --env-file=.env --import tsx scripts/rotate-demo-keys.ts --confirm-demo-key-rotation",
     "demo-keys:rotate:dry-run": "node --env-file=.env --import tsx scripts/rotate-demo-keys.ts",
     "payout-key:verify": "node --env-file=.env --import tsx scripts/verify-operator-key.ts",
@@ -24,7 +22,12 @@
     "jobs:reconcile": "node --env-file=.env --import tsx scripts/job-reconcile.ts",
     "quiz:reconcile": "node --env-file=.env --import tsx scripts/quiz-reconcile.ts",
     "repair:ownership": "node --env-file=.env --import tsx scripts/repair-ownership.ts",
-    "chain:failure": "node --env-file=.env --import tsx scripts/chain-failure.ts"
+    "chain:failure": "node --env-file=.env --import tsx scripts/chain-failure.ts",
+    "test:unit": "npm test",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test --test-reporter=../scripts/server-coverage-reporter.mjs test/config.test.ts test/demo.test.ts test/rotation.test.ts test/pagination.test.ts test/event-ledger.test.ts test/access-key.test.ts test/migrations.test.ts test/ledger.test.ts test/event-validation.test.ts test/verify.test.ts test/amount.test.ts test/schema.test.ts test/lifecycle.test.ts test/cursor.test.ts test/api-hardening.test.ts test/nep413.test.ts test/chain-source.test.ts test/readiness.test.ts test/worker.test.ts test/operator.test.ts test/script-guards.test.ts test/db-test-utils.test.ts test/e2e-cleanup.test.ts",
+    "smoke:testnet": "node --env-file=.env --import tsx scripts/e2e.ts",
+    "exploit:testnet": "node --env-file=.env --import tsx scripts/exploit.ts",
+    "test:e2e:local": "node ../scripts/install-near-sandbox.mjs && npm --prefix .. run contract:build --silent && node --import tsx --test --test-concurrency=1 --test-timeout=180000 test/e2e/economic-loop.test.ts test/e2e/attacks.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
@@ -39,6 +42,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "near-workspaces": "^5.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

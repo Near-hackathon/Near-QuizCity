@@ -1367,3 +1367,32 @@ test("retry-payment requires an operator or admin role", async () => {
     await operatorApp.close();
   });
 });
+
+test("an unknown outcome with a known hash is persisted for stored-hash reconciliation", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await migrated(sql);
+    await seedVerifiedJob(sql);
+    let calls = 0;
+    const app = await buildApp(sql, {
+      payJob: async () => {
+        calls += 1;
+        return { kind: "unknown" as const, code: "CHAIN_TIMEOUT" as const, txHash: "job-known-tx" };
+      },
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/jobs/job-1/complete",
+      payload: {},
+    });
+    assert.equal(response.statusCode, 502);
+    assert.equal(calls, 1);
+    const [job] = await sql`select status, chain_tx from jobs where id = 'job-1'`;
+    assert.equal(job.status, "payment_unknown");
+    assert.equal(job.chain_tx, "job-known-tx");
+    const [attempt] = await sql`
+      select state, tx_hash from job_payment_attempts where job_id = 'job-1'
+    `;
+    assert.equal(attempt.state, "unknown");
+    assert.equal(attempt.tx_hash, "job-known-tx");
+  });
+});

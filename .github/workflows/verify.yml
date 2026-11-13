@@ -9,9 +9,13 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  verify:
+  static:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -31,11 +35,7 @@ jobs:
           workspaces: contract
 
       - name: Secret scan
-        run: |
-          if git grep -nE 'ed25519:[1-9A-HJ-NP-Za-km-z]{80,}|NEAR_OPERATOR_PRIVATE_KEY=ed25519:[1-9A-HJ-NP-Za-km-z]{40,}' -- . ':!*.example'; then
-            echo "possible secret material found in tracked files" >&2
-            exit 1
-          fi
+        run: node scripts/secret-scan.mjs
 
       - name: Install cargo-near
         run: cargo install cargo-near --version 0.23.0 --locked
@@ -43,19 +43,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify
+      - name: Verify (format, lint, typecheck, tests, builds, ABI)
         run: npm run verify
 
-      - name: Record WASM checksum
+      - name: Server unit coverage gate
+        run: npm run test:coverage --workspace=server
+
+      - name: Record WASM checksum and counts
         run: |
           sha256sum contract/target/near/quizcity-production.wasm | tee wasm.sha256
-          echo "### WASM checksum" >> "$GITHUB_STEP_SUMMARY"
-          cat wasm.sha256 >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### WASM checksum"
+            cat wasm.sha256
+            echo
+            echo "### Artifact sizes (raw bytes)"
+            stat -c '%n %s' contract/target/near/quizcity-production.wasm
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify demo artifact
         run: |
           npm run contract:build:demo
           npm run contract:abi:check:demo
+
+      - name: Report bundle sizes
+        run: node scripts/report-bundle-size.mjs >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload WASM artifact
         uses: actions/upload-artifact@v4
@@ -69,6 +80,7 @@ jobs:
 
   database:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17
@@ -98,3 +110,80 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://quizcity:quizcity@localhost:5432/quizcity_test
         run: npm run db:test
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Web unit, component, and accessibility tests
+        run: npm run test:web
+
+      - name: Web coverage report
+        run: npm run test:coverage --workspace=web
+
+      - name: Web build
+        run: npm run build --workspace=web
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: quizcity
+          POSTGRES_PASSWORD: quizcity
+          POSTGRES_DB: quizcity_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+
+      - name: Install cargo-near
+        run: cargo install cargo-near --version 0.23.0 --locked
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install pinned sandbox and run local E2E
+        env:
+          TEST_DATABASE_URL: postgresql://quizcity:quizcity@localhost:5432/quizcity_test
+        run: npm run test:e2e:local
+
+      - name: Upload E2E failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure
+          path: |
+            /tmp/e2e*.log
+          if-no-files-found: ignore

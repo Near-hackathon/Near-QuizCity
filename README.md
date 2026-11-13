@@ -144,19 +144,22 @@ QC amounts are canonical decimal strings, never JavaScript numbers. Validation f
 ## Tests
 
 ```bash
-npm run verify                             # all checks listed below
+npm run verify                             # static checks, contract/server tests, builds, ABI
 npm run db:test                            # PostgreSQL integration tests (TEST_DATABASE_URL, temporary schemas)
-npm run e2e                                # full player loop against testnet
-npm run exploit                            # 13 adversarial checks (mutates demo state)
+npm run test:web                           # web unit/component/accessibility tests
+npm run test:e2e:local                     # local NEAR sandbox economic loop and attacks
+npm run verify:all                         # verify + database + web + local E2E
+npm run smoke:testnet                      # guarded manual testnet check (RUN_TESTNET_SMOKE=1)
+npm run exploit:testnet                    # guarded legacy manual exploit script
 ```
 
-`npm run verify` runs the production contract tests (49), demo-reset contract tests (52), 125 server tests, the toolchain and WASM-export checker tests, formatting/linting/typechecks, both builds, and a production-WASM check that reads real function exports and rejects demo helpers. `npm run db:test` executes 113 PostgreSQL integration tests for migrations, ledger atomicity/conflict behavior, NEP-413 auth, transaction consumption, quiz snapshots, job payment races/reconciliation, chain ingestion/rebuild/dead-letter handling, readiness, sync, and the world seed against disposable schemas.
+`npm run verify` runs the production contract tests (53), demo-reset contract tests (56), 137 server tests, the toolchain, WASM-export, and coverage-reporter tests, formatting/linting/typechecks, both builds, and a production-WASM check that reads real function exports and rejects demo helpers. `npm run test:coverage --workspace=server` enforces reviewed floors of 68% lines, 88% branches, and 78% functions. `npm run db:test` executes 117 PostgreSQL integration tests for migrations, ledger atomicity/conflict behavior, NEP-413 auth, transaction consumption, quiz snapshots, job payment races/reconciliation, chain ingestion/rebuild/dead-letter handling, readiness, sync, and the world seed against disposable schemas. Both database and local E2E commands require an explicit disposable `TEST_DATABASE_URL` and never fall back to the development database.
 
-`e2e` and `exploit` mutate testnet state. They are intentionally deferred while the Phase 1 live deployment/key work remains owner-gated; do not treat them as current evidence until the corrected contract is deployed and approved.
+`smoke:testnet` and `exploit:testnet` mutate shared testnet state and are opt-in only: they require `RUN_TESTNET_SMOKE=1`, `APP_ENV=local|test`, and testnet. They are never part of `verify` or pull-request CI. Local deterministic coverage lives in `server/test/e2e/` and `web/src/**/*.test.tsx`. CI jobs and required checks are documented in [`docs/ci.md`](./docs/ci.md).
 
 `e2e` drives register → claim → job → quiz → property → business → transfer and asserts exact balances. `exploit` mutates demo state, so reset afterwards (below). It covers forged hashes, cross-account transaction use, SQL injection in paths, answer leakage, quiz replay, non-employee job completion, request-tampered payment amounts, demo-key leakage, and ledger duplication.
 
-Expected end state: Alice 225 QC, Bob 480 QC, Kofi 1,200 QC (900 after the job + 300 property sale), venue treasury 20 QC, council 0.
+The deterministic local E2E end state is Alice 225 QC, Bob 485 QC, Professor Kofi 9,900 QC, business treasury 15 QC, and council 300 QC. The flow includes a 5 QC owner withdrawal after the 20 QC service payment and verifies that exact receipt replay does not apply it twice.
 
 ## Reset
 
@@ -212,7 +215,7 @@ npm run payout-key:verify -- --public-key ed25519:<new-key>
 npm run verify
 ```
 
-In order: Rust toolchain pin check; Prettier and `cargo fmt --check`; ESLint (runtime-specific globals) and `cargo clippy -D warnings`; TypeScript for server and web; 49 production contract tests, 52 demo-reset contract tests, 125 server tests, and the toolchain/WASM-export checker tests; then the contract WASM, server typecheck, and production web build; finally the production-WASM demo-helper check, which inspects `WebAssembly.Module.exports` rather than raw bytes. `npm ci && npm run verify` works without `server/.env`.
+In order: Rust toolchain pin check; Prettier and `cargo fmt --check`; ESLint (runtime-specific globals) and `cargo clippy -D warnings`; TypeScript for server and web; 53 production contract tests, 56 demo-reset contract tests, 137 server tests, and the toolchain/WASM-export/coverage-reporter tests; then the contract WASM, server typecheck, and production web build; finally the production-WASM demo-helper check, which inspects `WebAssembly.Module.exports` rather than raw bytes. `npm ci && npm run verify` works without `server/.env`.
 
 The same command runs in `.github/workflows/verify.yml` on Node 20.20 and Rust 1.95, with the WASM checksum recorded as an artifact.
 

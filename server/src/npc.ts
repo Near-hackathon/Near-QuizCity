@@ -99,6 +99,9 @@ export async function tickNpcs(overrides: Partial<NpcDeps> = {}): Promise<NpcTic
     }
 
     const posted = Number(state.state?.jobs_posted ?? 0);
+    if (deps.templates.length === 0) {
+      return { created: false, reason: "no job template" };
+    }
     const template = deps.templates[posted % deps.templates.length];
     const id = `job-npc-${posted + 1}`;
     const inserted = await transaction<{ id: string }[]>`
