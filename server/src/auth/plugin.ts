@@ -58,12 +58,21 @@ export function parseSessionCookie(header: string | undefined): string | null {
   return null;
 }
 
+/**
+ * `None` is required in deployment because the frontend and API live on
+ * different registrable domains (e.g. workers.dev and fly.dev). The API enforces
+ * its own CSRF token on state-changing requests, so the cross-site cookie is safe.
+ */
+function sameSitePolicy(secure: boolean): "Lax" | "None" {
+  return secure ? "None" : "Lax";
+}
+
 export function sessionCookie(token: string, maxAgeSeconds: number, secure: boolean): string {
   return [
     `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
     "HttpOnly",
     "Path=/",
-    "SameSite=Lax",
+    `SameSite=${sameSitePolicy(secure)}`,
     `Max-Age=${maxAgeSeconds}`,
     ...(secure ? ["Secure"] : []),
   ].join("; ");
@@ -74,7 +83,7 @@ export function clearSessionCookie(secure: boolean): string {
     `${SESSION_COOKIE}=`,
     "HttpOnly",
     "Path=/",
-    "SameSite=Lax",
+    `SameSite=${sameSitePolicy(secure)}`,
     "Max-Age=0",
     ...(secure ? ["Secure"] : []),
   ].join("; ");

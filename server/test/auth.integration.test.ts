@@ -412,17 +412,21 @@ test("concurrent nonce issuance cannot exceed the account limit", async () => {
 test("cookies use secure deployment policy and matching clear attributes", () => {
   const secure = sessionCookie("token", 100, true);
   assert.match(secure, /HttpOnly/);
-  assert.match(secure, /SameSite=Lax/);
+  // Cross-site production frontend/API split requires None; local stays Lax.
+  assert.match(secure, /SameSite=None/);
   assert.match(secure, /Path=\//);
   assert.match(secure, /Secure/);
   const clearedSecure = clearSessionCookie(true);
   assert.match(clearedSecure, /Max-Age=0/);
+  assert.match(clearedSecure, /SameSite=None/);
   assert.match(clearedSecure, /Secure/);
 
   const local = sessionCookie("token", 100, false);
   assert.doesNotMatch(local, /Secure/);
+  assert.match(local, /SameSite=Lax/);
   const clearedLocal = clearSessionCookie(false);
   assert.doesNotMatch(clearedLocal, /Secure/);
+  assert.match(clearedLocal, /SameSite=Lax/);
 });
 
 test("official NEP-413 example produces the expected digest", () => {
