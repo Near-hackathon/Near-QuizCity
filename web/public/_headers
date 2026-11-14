@@ -1,0 +1,17 @@
+# Cache the content-hashed Vite bundle forever and revalidate the HTML shell.
+/index.html
+  Cache-Control: no-cache
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Game assets keep stable filenames, so use a short cache instead of immutable.
+/game-assets/*
+  Cache-Control: public, max-age=86400
+
+# Basic hardening. Keep framing restrictions out of this file: the NEAR wallet
+# flow and Phaser canvas do not need them, and overly strict policies break the
+# game on some browsers.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

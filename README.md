@@ -298,6 +298,70 @@ active chain-owned rows. Event ordering is enforced across page boundaries,
 every immutable duplicate field must match, a non-zero supply reconciliation
 rolls back, and rebuild/full-sync share an exclusion guard.
 
+## Deployment
+
+The repository is a monorepo, but the web client and the API deploy independently.
+Each platform watches only its own paths, so a web change does not rebuild the API
+and an API change does not rebuild the web client.
+
+| Target   | Sources                             | Host                             |
+| -------- | ----------------------------------- | -------------------------------- |
+| Web      | `web/`, `packages/`, `assets/maps/` | Cloudflare Pages                 |
+| API      | `server/`, `packages/`              | Fly.io using `server/Dockerfile` |
+| Contract | `contract/`                         | NEAR release artifact            |
+
+### Web: Cloudflare Pages
+
+Connect `Near-hackathon/Near-QuizCity` with these build settings:
+
+- Root directory: repository root
+- Build command: `npm ci && npm run build --workspace=web`
+- Build output directory: `web/dist`
+- Node version: `20.20.0`
+- Build watch paths: `web/*`, `packages/protocol/*`, `packages/world-data/*`, `assets/maps/*`, `package.json`, `package-lock.json`
+
+The root is required because `web/vite.config.ts` reads `../assets/maps` and the
+hoisted `../node_modules/phaser`. `web/public/_redirects` provides the SPA fallback
+and `web/public/_headers` sets asset caching.
+
+Environment variables:
+
+```text
+VITE_API_URL=https://<api-host>
+VITE_NEAR_NETWORK=testnet
+VITE_NEAR_RPC_URL=https://rpc.testnet.fastnear.com
+VITE_CONTRACT_ID=quizcity.testnet
+```
+
+The API must allow the Pages origin through `WEB_ORIGIN`.
+
+### API: Fly.io
+
+`fly.toml` builds from the repository root so npm workspaces resolve. NPC, world,
+job and quiz reconciliation workers run in-process, so the API must stay a single
+always-on machine; the config disables auto-stop and replaces the machine on deploy.
+
+```bash
+flyctl secrets set --app quiz-city-api \
+  DATABASE_URL='postgresql://...-pooler...' \
+  DATABASE_URL_UNPOOLED='postgresql://...' \
+  WEB_ORIGIN='https://<pages-host>' \
+  NEAR_OPERATOR_ACCOUNT='...' \
+  NEAR_OPERATOR_PRIVATE_KEY='...'
+flyctl deploy --remote-only --ha=false
+```
+
+`APP_ENV`, `PGSSL`, `HOST`, `PORT`, `CHAIN_SOURCE_REQUIRED` and
+`READINESS_TIMEOUT_MS` are set in `fly.toml`. Add the remaining `NEAR_*` and worker
+settings as secrets, and remove `CHAIN_SOURCE_REQUIRED` once an indexer URL is
+configured. The `[deploy] release_command` applies migrations with
+`DATABASE_URL_UNPOOLED` before the release starts.
+
+Fly's GitHub integration deploys on every push to the connected branch and has no
+build-path filter; keep the connection on `main` and merge web work only when an API
+redeploy is acceptable. DigitalOcean App Platform can reuse `server/Dockerfile` the
+same way.
+
 ## Known limitations
 
 - The chain event ingester speaks the documented HTTP contract, but no production indexer URL has been selected or deployed. Until an owner-approved source is configured, staging/production readiness fails and live ingestion does not run; request-time writes and `POST /sync` still keep the mirror current.

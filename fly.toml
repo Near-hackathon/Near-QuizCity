@@ -1,0 +1,55 @@
+# Fly.io configuration for the Quiz City API.
+#
+# Deploy from the repository root:
+#   flyctl deploy --remote-only --ha=false --strategy immediate
+#
+# The web client deploys separately to Cloudflare Pages; see README.md.
+app = "quiz-city-api"
+primary_region = "iad"
+kill_signal = "SIGINT"
+kill_timeout = "20s"
+
+[build]
+  # Context is the repository root so npm workspaces resolve.
+  dockerfile = "server/Dockerfile"
+
+[deploy]
+  # Replace the single machine instead of overlapping old and new workers.
+  strategy = "immediate"
+  # Apply pending migrations with the direct Neon connection before the
+  # release starts. Requires DATABASE_URL_UNPOOLED as a Fly secret.
+  release_command = "npm run db:push --workspace=server"
+  release_command_timeout = "10m"
+
+[env]
+  NODE_ENV = "production"
+  APP_ENV = "production"
+  HOST = "0.0.0.0"
+  PORT = "8787"
+  PGSSL = "require"
+  READINESS_TIMEOUT_MS = "10000"
+  # No production chain indexer is configured yet. Remove this override once
+  # CHAIN_EVENT_SOURCE_URL points at an approved source.
+  CHAIN_SOURCE_REQUIRED = "0"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  # NPC, world, job and quiz reconciliation workers run in-process, so the API
+  # must be exactly one always-on writer. Do not enable auto-stop or HA.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/health/live"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"

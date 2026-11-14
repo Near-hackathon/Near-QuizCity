@@ -1,0 +1,40 @@
+# Docker build context for the API image (server/Dockerfile).
+# The context is the repository root so npm workspaces can resolve.
+
+# Version control and CI
+.git
+.github
+
+# Internal, local-only and secret material. Never bake these into an image.
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+server/demo-accounts.json
+server/backups
+_offrepo
+docs
+
+# Installed and generated output
+node_modules
+**/node_modules
+**/dist
+**/coverage
+contract/target
+
+# Sections the API image does not build or ship
+web
+assets
+contract
+scripts
+server/test
+packages/protocol/test
+packages/world-data/test
+
+# Editor and OS noise
+.DS_Store
+*.log
+*.har
+*.pcap

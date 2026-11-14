@@ -49,13 +49,13 @@
     "fastify": "^4.28.1",
     "near-api-js": "^4.0.4",
     "postgres": "^3.4.4",
+    "tsx": "^4.19.2",
     "ws": "^8.23.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/ws": "^8.18.2",
     "near-workspaces": "^5.0.0",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

@@ -1,0 +1,2 @@
+# Single-page app fallback. Static files are served before this rule.
+/*    /index.html   200
