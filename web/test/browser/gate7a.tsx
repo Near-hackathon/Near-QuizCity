@@ -8,7 +8,9 @@ import { createWorldTransport } from "../../src/state/world-transport";
 
 const errors: string[] = [];
 const trace: string[] = [];
-window.addEventListener("error", (event) => errors.push(event.message));
+window.addEventListener("error", (event) =>
+  errors.push(event.error instanceof Error && event.error.stack ? event.error.stack : event.message),
+);
 window.addEventListener("unhandledrejection", () => errors.push("Unhandled promise rejection"));
 let bridge: GameBridge;
 let rendered = "";

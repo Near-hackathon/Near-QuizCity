@@ -912,9 +912,7 @@ export function GameUi({
                     Art by Gridwright
                   </a>
                 </p>
-                <p>
-                  Gridwright City, Interiors and City People. Original Quiz City world and interface.
-                </p>
+                <p>Gridwright City, Interiors and City People. Original Quiz City world and interface.</p>
                 <p>
                   Additional campus buildings and furniture supplied by the project owner. See asset notices
                   for permission records.

@@ -21,13 +21,18 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 try {
   server = await createServer({
     configFile: join(root, "web/vite.config.ts"),
-    cacheDir: join(profile, "vite-cache"),
+    cacheDir: join(root, "node_modules/.vite-game-smoke"),
     root: join(root, "web"),
     server: { host: "127.0.0.1", port: 0 },
   });
   await server.listen();
   const address = server.httpServer.address();
   if (!address || typeof address === "string") throw new Error("Missing Vite address");
+  // Warm the fixture graph (and dependency optimizer) before launching Chrome.
+  // Otherwise Vite can optimize/reload the page mid-test and produce a transient
+  // "context destroyed" failure on the first run.
+  await fetch(`http://127.0.0.1:${address.port}/test/browser/gate7a.html`);
+  await server.waitForRequestsIdle();
   const runBrowser = async (stack) => {
     browser = spawn(
       executable,
