@@ -26,7 +26,7 @@ kill_timeout = '20s'
   READINESS_TIMEOUT_MS = '10000'
 
 [http_service]
-  internal_port = 8080
+  internal_port = 8787
   force_https = true
   auto_stop_machines = 'off'
   auto_start_machines = true
@@ -44,4 +44,3 @@ kill_timeout = '20s'
   memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 256
