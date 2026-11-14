@@ -321,14 +321,15 @@ Connect `Near-hackathon/Near-QuizCity` with these Workers Builds settings:
 
 The root is required because `web/vite.config.ts` reads `../assets/maps` and the
 hoisted `../node_modules/phaser`. `wrangler.jsonc` serves `web/dist` as static
-assets with an SPA fallback; its `name` must match the Worker name in the
-Cloudflare dashboard. `web/public/_headers` is supported by Workers static assets, and the
-SPA fallback is handled by `not_found_handling` in `wrangler.jsonc`.
-
-Environment variables:
+assets and proxies `/v1/*` and `/health/*` to the Fly API, so the browser only
+ever talks to this origin. This keeps the session cookie first-party and avoids
+cross-site cookie blocking between `workers.dev` and `fly.dev`. Set the
+environment variables below so the frontend calls this Worker's own origin; the
+Worker proxies `/v1/*` and `/health/*` to Fly, and `WEB_ORIGIN` on Fly must equal
+that same Worker origin.
 
 ```text
-VITE_API_URL=https://<api-host>
+VITE_API_URL=https://near-quiz-city.<your-subdomain>.workers.dev
 VITE_NEAR_NETWORK=testnet
 VITE_NEAR_RPC_URL=https://rpc.testnet.fastnear.com
 VITE_CONTRACT_ID=quizcity.testnet

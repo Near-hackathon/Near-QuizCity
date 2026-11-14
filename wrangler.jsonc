@@ -4,8 +4,12 @@
   "name": "near-quiz-city",
   "$schema": "./node_modules/wrangler/config-schema.json",
   "compatibility_date": "2026-11-14",
+  // Serves web/dist and proxies /v1 and /health to Fly so the browser only
+  // ever talks to this origin (first-party session cookies).
+  "main": "./worker.ts",
   "assets": {
     "directory": "./web/dist",
     "not_found_handling": "single-page-application",
+    "run_worker_first": ["/v1/*", "/health/*"],
   },
 }
