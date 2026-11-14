@@ -28,6 +28,7 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8787
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=deps --chown=node:node /app/server/node_modules ./server/node_modules
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node server/package.json server/tsconfig.json ./server/
 COPY --chown=node:node server/src ./server/src
