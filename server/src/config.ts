@@ -15,6 +15,11 @@ export type AppConfig = {
   host: string;
   webOrigin: string;
   databaseUrl: string;
+  /**
+   * Direct (non-pooled) URL for schema migrations. Optional locally; Neon writes
+   * `DATABASE_URL_UNPOOLED` alongside the pooled `DATABASE_URL`.
+   */
+  migrationDatabaseUrl: string;
   pgSsl: "disable" | "require";
   networkId: "testnet" | "mainnet";
   rpcUrl: string;
@@ -182,28 +187,32 @@ function privateKey(env: NodeJS.ProcessEnv, name: string): string {
   return value;
 }
 
-function databaseUrl(env: NodeJS.ProcessEnv, appEnv: AppEnv): string {
-  const raw = required(env, "DATABASE_URL");
+function databaseUrl(env: NodeJS.ProcessEnv, appEnv: AppEnv, name = "DATABASE_URL"): string {
+  const raw = required(env, name);
   if (/%(?![0-9a-fA-F]{2})/.test(raw)) {
-    throw new ConfigError("DATABASE_URL contains a malformed percent escape");
+    throw new ConfigError(`${name} contains a malformed percent escape`);
   }
   let parsed: URL;
   try {
     parsed = new URL(raw);
   } catch {
-    throw new ConfigError("DATABASE_URL must be a valid URL");
+    throw new ConfigError(`${name} must be a valid URL`);
   }
   if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
-    throw new ConfigError("DATABASE_URL must use the postgres:// or postgresql:// scheme");
+    throw new ConfigError(`${name} must use the postgres:// or postgresql:// scheme`);
   }
-  if (!parsed.hostname) throw new ConfigError("DATABASE_URL must include a hostname");
+  if (!parsed.hostname) throw new ConfigError(`${name} must include a hostname`);
   if (!parsed.pathname || parsed.pathname === "/") {
-    throw new ConfigError("DATABASE_URL must include a database name");
+    throw new ConfigError(`${name} must include a database name`);
   }
   if ((appEnv === "staging" || appEnv === "production") && (!parsed.username || !parsed.password)) {
-    throw new ConfigError("DATABASE_URL must include credentials for staging and production");
+    throw new ConfigError(`${name} must include credentials for staging and production`);
   }
   return raw;
+}
+
+function optionalDatabaseUrl(env: NodeJS.ProcessEnv, appEnv: AppEnv, name: string, fallback: string): string {
+  return env[name]?.trim() ? databaseUrl(env, appEnv, name) : fallback;
 }
 
 function webOrigin(env: NodeJS.ProcessEnv, appEnv: AppEnv): string {
@@ -290,6 +299,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   const rpcFallback =
     networkId === "mainnet" ? "https://rpc.mainnet.fastnear.com" : "https://rpc.testnet.fastnear.com";
 
+  const databaseUrlValue = databaseUrl(env, appEnv);
+
   const config: AppConfig = {
     appEnv,
     demoMode,
@@ -306,7 +317,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     port: integer(env, "PORT", 8787, 1, 65_535),
     host,
     webOrigin: webOrigin(env, appEnv),
-    databaseUrl: databaseUrl(env, appEnv),
+    databaseUrl: databaseUrlValue,
+    migrationDatabaseUrl: optionalDatabaseUrl(env, appEnv, "DATABASE_URL_UNPOOLED", databaseUrlValue),
     pgSsl: pgSslRaw,
     networkId,
     rpcUrl: url(env, "NEAR_RPC_URL", rpcFallback).toString(),

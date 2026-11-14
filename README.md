@@ -13,23 +13,21 @@ The city runs full-screen with a small floating phone. Jobs, quizzes, wallet set
 property purchases, shops, stock controls and owner withdrawals stay inside that phone.
 Six residents have generic display names and daily routines. The apartment belongs to
 Professor Reed; other residents work, take breaks and walk around the city.
-See [starter residents](docs/starter-residents.md) and the delivery notes below for scope.
+See the delivery notes below for scope.
 
 Research offers now include a saved reading brief, knowledge check and summary. Shops
 use server-priced stock reservations and the idempotent `pay_order` contract method.
 **Testnet contract updated on 14 November 2026.** The production artifact is deployed
 with a state-preserving migration, and the server uses a restricted payout key.
 Automatic accounts now complete registration and receive their confirmed starter
-allowance. See [deployment evidence](docs/testnet-deployment-2026-11-14.md).
-The retired full-access server key was revoked after explicit owner approval;
+allowance. The retired full-access server key was revoked after explicit owner approval;
 QC-0105 is complete.
 
 For the city, prepare licensed local assets with `npm run assets:prepare`, check maps
 with `npm run maps:check`, apply pending database migrations while the API is stopped,
 then run `npm run dev`. Exterior collision migration `0023` preserves sessions and
-relocates only players inside the newly blocked facades. See
-[Phase 7 handoff](docs/phase7-codex-handoff.md) for browser smoke, local-stack tests,
-asset preparation, current evidence and remaining release checks.
+relocates only players inside the newly blocked facades. Browser smoke, local-stack
+tests, asset preparation and release checks are covered by the repository test scripts.
 
 The district visual pass uses `new assets/building free.png`,
 `new assets/free campus assets.png`, and
@@ -38,7 +36,7 @@ paths and rerun `npm run assets:prepare` after adding them. The catalogue record
 owner's permission confirmation separately from creator-supplied licences. Raw packs
 and generated copies remain ignored. Migration `0026` activates the furniture collision
 layouts and safely relocates newly blocked positions; stop the API while applying it.
-See [visual pass and verification](docs/visual-slice.md).
+The visual pass was verified locally.
 
 - Contract (testnet): [`quizcity.testnet`](https://testnet.nearblocks.io/address/quizcity.testnet)
 - Web app: Vite + React (runs at http://localhost:5173)
@@ -85,7 +83,7 @@ web/             React shell, Phaser city, landing page and in-game phone
 packages/        Shared protocol schemas, maps and navigation data
 ```
 
-The ordered implementation plan, audit findings, task dependencies, and acceptance gates are in [`TECHNICAL_WORKFLOW.md`](./TECHNICAL_WORKFLOW.md). Start with Phase 0 and do not skip the backend-complete gate before building the final city art.
+Implementation planning, audit history and phase reviews are maintained outside the published repository.
 
 ## Quick start
 
@@ -128,7 +126,7 @@ QC-0105's recovery-key and restricted-payout-key sequence before using `chain:se
 that command deploys and resets disposable testnet state. It is not part of normal
 local startup. Local contract/RPC tests use `npm run test:e2e:local` instead.
 
-`.env` keys: `APP_ENV`, `DEMO_MODE`, `DATABASE_URL`, `PGSSL`, `PORT`, `HOST`, `WEB_ORIGIN`, `NEAR_NETWORK`, `NEAR_RPC_URL`, `NEAR_CONTRACT_ID`, `NEAR_OPERATOR_ACCOUNT`, `NEAR_OPERATOR_PRIVATE_KEY`, `NPC_TICK_MS`, `E2E_API`, and the chain/readiness worker settings (`CHAIN_EVENT_SOURCE_URL`, `CHAIN_SOURCE_REQUIRED`, `CHAIN_START_BLOCK`, `CHAIN_POLL_INTERVAL_MS`, `CHAIN_PAGE_SIZE`, `CHAIN_FETCH_TIMEOUT_MS`, `CHAIN_MAX_RETRIES`, `READINESS_TIMEOUT_MS`). See [`docs/chain-ingestion.md`](./docs/chain-ingestion.md). Staging and production refuse to start without a chain event source unless `CHAIN_SOURCE_REQUIRED=0` is set explicitly. Configuration is validated once at startup; invalid or missing values stop the process with an actionable message and a redacted summary is logged. Tests import the pure validator and need no `.env`.
+`.env` keys: `APP_ENV`, `DEMO_MODE`, `DATABASE_URL`, `PGSSL`, `PORT`, `HOST`, `WEB_ORIGIN`, `NEAR_NETWORK`, `NEAR_RPC_URL`, `NEAR_CONTRACT_ID`, `NEAR_OPERATOR_ACCOUNT`, `NEAR_OPERATOR_PRIVATE_KEY`, `NPC_TICK_MS`, `E2E_API`, and the chain/readiness worker settings (`CHAIN_EVENT_SOURCE_URL`, `CHAIN_SOURCE_REQUIRED`, `CHAIN_START_BLOCK`, `CHAIN_POLL_INTERVAL_MS`, `CHAIN_PAGE_SIZE`, `CHAIN_FETCH_TIMEOUT_MS`, `CHAIN_MAX_RETRIES`, `READINESS_TIMEOUT_MS`). Staging and production refuse to start without a chain event source unless `CHAIN_SOURCE_REQUIRED=0` is set explicitly. Configuration is validated once at startup; invalid or missing values stop the process with an actionable message and a redacted summary is logged. Tests import the pure validator and need no `.env`.
 
 `NEAR_OPERATOR_PRIVATE_KEY` is a payout-only function-call key for exactly `credit_reward,pay_job,settle_escrow,npc_purchase`. `NEAR_DEPLOY_PRIVATE_KEY` is the contract account's offline full-access deploy/recovery key and is required only for `npm run chain:seed`; pass it in the shell and never store it in `server/.env`.
 
@@ -172,7 +170,7 @@ Use `https://rpc.testnet.fastnear.com`; the public `rpc.testnet.near.org` endpoi
 | `get_balance / get_player / get_property / get_business / get_stats`      | anyone                      | Single-entity views                                    |
 | `get_properties(from_index, limit)` / `get_businesses(from_index, limit)` | anyone                      | Pages of up to 100 items                               |
 
-State-changing methods emit canonical NEP-297-style `EVENT_JSON` logs. Each ledger movement has one event with `seq`, `wallet_from`, `wallet_to`, `amount`, `reference`, and `entity_id`; see [`docs/contract-events.md`](./docs/contract-events.md). The server reads those events for amounts and parties instead of trusting the request body.
+State-changing methods emit canonical NEP-297-style `EVENT_JSON` logs. Each ledger movement has one event with `seq`, `wallet_from`, `wallet_to`, `amount`, `reference`, and `entity_id`. The server reads those events for amounts and parties instead of trusting the request body.
 
 ## Server API
 
@@ -202,7 +200,7 @@ npm run exploit:testnet                    # guarded legacy manual exploit scrip
 
 `npm run verify` runs the production contract tests (53), demo-reset contract tests (56), 137 server tests, the toolchain, WASM-export, and coverage-reporter tests, formatting/linting/typechecks, both builds, and a production-WASM check that reads real function exports and rejects demo helpers. `npm run test:coverage --workspace=server` enforces reviewed floors of 68% lines, 88% branches, and 78% functions. `npm run db:test` executes 117 PostgreSQL integration tests for migrations, ledger atomicity/conflict behavior, NEP-413 auth, transaction consumption, quiz snapshots, job payment races/reconciliation, chain ingestion/rebuild/dead-letter handling, readiness, sync, and the world seed against disposable schemas. Both database and local E2E commands require an explicit disposable `TEST_DATABASE_URL` and never fall back to the development database.
 
-`smoke:testnet` and `exploit:testnet` mutate shared testnet state and are opt-in only: they require `RUN_TESTNET_SMOKE=1`, `APP_ENV=local|test`, and testnet. They are never part of `verify` or pull-request CI. Local deterministic coverage lives in `server/test/e2e/` and `web/src/**/*.test.tsx`. CI jobs and required checks are documented in [`docs/ci.md`](./docs/ci.md).
+`smoke:testnet` and `exploit:testnet` mutate shared testnet state and are opt-in only: they require `RUN_TESTNET_SMOKE=1`, `APP_ENV=local|test`, and testnet. They are never part of `verify` or pull-request CI. Local deterministic coverage lives in `server/test/e2e/` and `web/src/**/*.test.tsx`. CI jobs and required checks are defined in `.github/workflows/verify.yml`.
 
 `e2e` drives register → claim → job → quiz → property → business → transfer and asserts exact balances. `exploit` mutates demo state, so reset afterwards (below). It covers forged hashes, cross-account transaction use, SQL injection in paths, answer leakage, quiz replay, non-employee job completion, request-tampered payment amounts, demo-key leakage, and ledger duplication.
 
@@ -302,12 +300,12 @@ rolls back, and rebuild/full-sync share an exclusion guard.
 
 ## Known limitations
 
-- The chain event ingester speaks the documented HTTP contract in [`docs/chain-ingestion.md`](./docs/chain-ingestion.md), but no production indexer URL has been selected or deployed. Until an owner-approved source is configured, staging/production readiness fails and live ingestion does not run; request-time writes and `POST /sync` still keep the mirror current.
+- The chain event ingester speaks the documented HTTP contract, but no production indexer URL has been selected or deployed. Until an owner-approved source is configured, staging/production readiness fails and live ingestion does not run; request-time writes and `POST /sync` still keep the mirror current.
 - Malformed or unverifiable events block the cursor until an operator runs `npm run chain:failure -- --retry` or `--ignore` with an audited reason.
 - `npm run chain:rebuild` is local/test only. It fetches and validates the complete provider history into a connection-local staging table before touching active rows, holds a network/contract advisory lock, replaces only chain-owned derived tables in one transaction, rolls back on any failure, records each run in `rebuild_runs`, and never cascades into server-owned tables. It exits non-zero when canonical supply and the mirrored wallet sum differ.
 - Single city plot seed; the schema supports many districts.
 - Real-time presence and chat are out of scope; NPC, chain-ingester, job-reconciliation, and quiz-reconciliation workers run in-process.
-- Deployed to testnet only. For production, point `DATABASE_URL` at Neon, host the API behind TLS, disable demo mode, and configure `CHAIN_EVENT_SOURCE_URL`.
+- Deployed to testnet only. For production, point `DATABASE_URL` at Neon, host the API behind TLS, disable demo mode, and configure `CHAIN_EVENT_SOURCE_URL`. Use the pooled Neon URL for the API and the direct URL for migrations, with `PGSSL=require`.
 - Browser profiles can explore without a wallet. Economic actions require a connected, authenticated wallet; public release still requires the deferred deployment/key work.
 
 ## Browser-game delivery checks
@@ -334,8 +332,8 @@ their own next-stage workflows.
 Username signup supports a separate encrypted, game-managed NEAR testnet wallet
 per resident. Enable locally with `npm run db:push` and
 `npm run wallets:setup -- --enable`, then restart the API. Players can download a
-recovery backup from their phone Wallet app. See
-[setup, custody, retries and recovery](docs/managed-testnet-wallets.md).
+recovery backup from their phone Wallet app. The wallet setup scripts cover custody,
+retries and recovery.
 The existing live contract upgrade gate still applies: account creation can finish
 and existing saved signup requests have completed against the upgraded contract.
 
@@ -353,4 +351,4 @@ teach NEAR using official sources.
 
 Apply `npm run db:push` and restart the server after updating. The administrator
 bootstrap for the two empty fee wallets, payment recovery, scoring authority and
-test commands are documented in [NEAR quiz matches](docs/near-quiz-matches.md).
+test commands are covered by the quiz-match setup script and tests.

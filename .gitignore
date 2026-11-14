@@ -1,15 +1,110 @@
-node_modules/
-dist/
-build/
+# ---------------------------------------------------------------------------
+# Secrets and credentials — never commit
+# ---------------------------------------------------------------------------
 .env
 .env.*
 !.env.example
-*.log
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
+.npmrc
+.yarnrc
+.pypirc
+.netrc
+.htpasswd
+secrets.json
+credentials.json
+service-account*.json
+firebase-adminsdk*.json
+
+# Local Neon CLI state and NEAR credentials
+.neon
+.near/
+.near-credentials/
+.near-credentials-*.json
+
+# Cloud / cluster credentials
+.aws/
+.azure/
+.gcloud/
+.kube/
+.docker/config.json
+
+# Local database, dumps and backups
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+*.bak
+*.bak.*
+backups/
+server/backups/
+
+# Quiz City disposable demo keys
+server/demo-accounts.json
+
+# ---------------------------------------------------------------------------
+# Local environment and tooling
+# ---------------------------------------------------------------------------
+.envrc
 .DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+.history/
+*.swp
+*.swo
+*~
+*.pid
+*.tmp
+
+# ---------------------------------------------------------------------------
+# Build, test and cache output
+# ---------------------------------------------------------------------------
+node_modules/
+dist/
+build/
 target/
-*.wasm
 coverage/
 .vite/
+.turbo/
+.cache/
+.parcel-cache/
+.next/
+.vercel/
+.netlify/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+test-results/
+playwright-report/
+
+# Compiled contract artifacts
+*.wasm
+
+# Logs and captures that can contain cookies or auth headers
+*.log
+logs/
+*.har
+*.pcap
+
+# ---------------------------------------------------------------------------
+# Internal process artifacts and documentation kept out of the published repository
+# ---------------------------------------------------------------------------
+_offrepo/
+docs/
+
+# ---------------------------------------------------------------------------
+# Nested clones and third-party source packs
+# ---------------------------------------------------------------------------
+web/Near-QuizCity/
 
 # Third-party source art is kept locally and imported selectively into game-owned assets.
 Gridwright Jam Pack/
@@ -18,8 +113,3 @@ new assets/
 
 # Obsolete generated copies; canonical game files now live in game-assets/runtime.
 web/public/game-assets/generated/
-
-server/demo-accounts.json
-
-server/backups/
-*.bak.*

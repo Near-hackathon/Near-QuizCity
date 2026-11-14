@@ -2,6 +2,7 @@ node_modules
 dist
 contract/target
 package-lock.json
+_offrepo/
 server/demo-accounts.json
 server/.env
 .env

@@ -14,4 +14,4 @@ Licence: characters/city-people/LICENSE.txt
 
 knowledge-visual-slice
 Building/campus/furniture art: supplied by the project owner; creator attribution pending source identification.
-Permission evidence: docs/new-assets-audit.md (owner confirmation; no supplied licence)
+Permission evidence: owner confirmation retained privately (no supplied licence)

@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sql } from "../src/db.js";
+import { migrationSql as sql } from "../src/db.js";
 import { loadMigrations, postgresMigrationStore, runMigrations } from "../src/migrations.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
