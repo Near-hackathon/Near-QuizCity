@@ -306,23 +306,24 @@ and an API change does not rebuild the web client.
 
 | Target   | Sources                             | Host                             |
 | -------- | ----------------------------------- | -------------------------------- |
-| Web      | `web/`, `packages/`, `assets/maps/` | Cloudflare Pages                 |
+| Web      | `web/`, `packages/`, `assets/maps/` | Cloudflare Workers               |
 | API      | `server/`, `packages/`              | Fly.io using `server/Dockerfile` |
 | Contract | `contract/`                         | NEAR release artifact            |
 
-### Web: Cloudflare Pages
+### Web: Cloudflare Workers
 
-Connect `Near-hackathon/Near-QuizCity` with these build settings:
+Connect `Near-hackathon/Near-QuizCity` with these Workers Builds settings:
 
 - Root directory: repository root
 - Build command: `npm run build --workspace=web`
-- Build output directory: `web/dist`
+- Deploy command: `npx wrangler deploy`
 - Node version: `20.20.0`
-- Build watch paths: `web/*`, `packages/protocol/*`, `packages/world-data/*`, `assets/maps/*`, `package.json`, `package-lock.json`
 
 The root is required because `web/vite.config.ts` reads `../assets/maps` and the
-hoisted `../node_modules/phaser`. `web/public/_redirects` provides the SPA fallback
-and `web/public/_headers` sets asset caching.
+hoisted `../node_modules/phaser`. `wrangler.jsonc` serves `web/dist` as static
+assets with an SPA fallback; its `name` must match the Worker name in the
+Cloudflare dashboard. `web/public/_redirects` and `web/public/_headers` are
+supported by Workers static assets.
 
 Environment variables:
 
@@ -333,7 +334,7 @@ VITE_NEAR_RPC_URL=https://rpc.testnet.fastnear.com
 VITE_CONTRACT_ID=quizcity.testnet
 ```
 
-The API must allow the Pages origin through `WEB_ORIGIN`.
+The API must allow the Worker origin through `WEB_ORIGIN`.
 
 ### API: Fly.io
 

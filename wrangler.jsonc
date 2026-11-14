@@ -1,0 +1,11 @@
+{
+  // Must match the Worker name in the Cloudflare dashboard. Workers Builds
+  // refuses to deploy when this name and the dashboard name differ.
+  "name": "near-quizcity",
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "compatibility_date": "2026-11-14",
+  "assets": {
+    "directory": "./web/dist",
+    "not_found_handling": "single-page-application",
+  },
+}
