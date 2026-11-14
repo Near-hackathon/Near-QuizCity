@@ -29,6 +29,9 @@ export const SnapshotQuestionResponse = Type.Object(
 export const StartQuizResponse = Type.Object(
   {
     attemptId: Type.String(),
+    expiresAt: Type.Optional(Type.String({ format: "date-time" })),
+    passScore: Type.Optional(Type.Integer({ minimum: 1 })),
+    rewardAmount: Type.Optional(QcAmount),
     quizId: Type.String(),
     questions: Type.Array(SnapshotQuestionResponse),
   },
@@ -51,6 +54,7 @@ export const QuizResponse = Type.Object(
   {
     id: Type.String(),
     title: Type.String(),
+    draft_id: Type.Optional(Type.Union([Type.String(), Type.Null()])),
     reward_pool: QcAmount,
     entry_fee: QcAmount,
     status: Type.String(),

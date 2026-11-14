@@ -1,0 +1,347 @@
+.landing {
+  display: block;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  color-scheme: light;
+  --ink: #243f4b;
+  --paper: #f7f5eb;
+  --green: #d9edac;
+  background: var(--paper);
+  color: var(--ink);
+  font-family:
+    Trebuchet MS,
+    Arial,
+    sans-serif;
+  min-height: 100vh;
+}
+.landing-nav {
+  max-width: 1320px;
+  margin: auto;
+  padding: 28px 5%;
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+.landing a {
+  color: inherit;
+  text-decoration: none;
+}
+.landing-logo {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-right: auto;
+}
+.city-diamond {
+  display: inline-block;
+  width: 19px;
+  height: 28px;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  background: linear-gradient(120deg, #dbf5a0 48%, #80b779 49%);
+  vertical-align: middle;
+}
+.game-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 28px;
+  border: 1px solid #274752;
+  border-radius: 14px;
+  background: #fffdf3;
+  color: #203d48;
+  padding: 13px 24px;
+  font:
+    700 15px Trebuchet MS,
+    Arial,
+    sans-serif;
+  box-shadow: 0 4px 0 #284752;
+  cursor: pointer;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+.game-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 #284752;
+}
+.game-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #284752;
+}
+.game-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.game-button-primary {
+  background: #d8eda8;
+}
+.landing-hero {
+  max-width: 1420px;
+  min-height: 660px;
+  margin: auto;
+  display: grid;
+  grid-template-columns: 0.85fr 1.25fr;
+  align-items: center;
+  padding: 35px 5% 70px;
+  overflow: hidden;
+}
+.landing-kicker {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.17em;
+  display: block;
+}
+.landing-copy h1 {
+  font-size: clamp(56px, 6.5vw, 91px);
+  line-height: 1.02;
+  letter-spacing: -0.065em;
+  margin: 24px 0;
+}
+.landing-copy h1 em {
+  font-style: normal;
+  color: #56856e;
+}
+.landing-copy > p {
+  font-size: 17px;
+  line-height: 1.8;
+  max-width: 385px;
+  margin-bottom: 30px;
+}
+.landing-caption {
+  display: block;
+  font-size: 11px;
+  margin-top: 20px;
+  letter-spacing: 0.04em;
+  color: #667976;
+}
+.landing-world {
+  position: relative;
+  transform: scale(1.1);
+}
+.landing-city {
+  width: 100%;
+  overflow: visible;
+}
+.landing-sticker {
+  position: absolute;
+  right: 4%;
+  bottom: 12%;
+  background: #f8ddb0;
+  border: 1px solid #cdaf80;
+  border-radius: 12px;
+  padding: 17px 24px;
+  transform: rotate(-7deg);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  box-shadow: 0 5px 0 #a7906230;
+}
+.landing-sticker strong {
+  font-size: 20px;
+  letter-spacing: -0.04em;
+}
+.landing-life {
+  max-width: 1200px;
+  margin: auto;
+  padding: 70px 5%;
+  border-top: 1px solid #dcded1;
+}
+.landing-life h2 {
+  font-size: 38px;
+  letter-spacing: -0.04em;
+  margin-top: 16px;
+}
+.landing-features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 60px;
+  margin-top: 45px;
+}
+.landing-features article > span {
+  font-size: 30px;
+}
+.landing-features h3 {
+  font-size: 20px;
+}
+.landing-features p {
+  line-height: 1.7;
+  color: #62756e;
+}
+.landing-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 30px 5%;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  border-top: 1px solid #dcded1;
+}
+.entry-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #1e394c99;
+  backdrop-filter: blur(12px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.entry-card {
+  position: relative;
+  border: 3px solid #fff;
+  border-radius: 30px;
+  box-shadow: 0 25px 100px #0c2d4e44;
+  background: #faf8ef;
+  padding: 34px;
+  width: min(460px, 100%);
+  max-height: 90dvh;
+  overflow: auto;
+}
+.entry-card h2 {
+  font-size: 30px;
+  letter-spacing: -0.05em;
+  margin: 15px 0 8px;
+}
+.entry-card > p {
+  font-size: 13px;
+  color: #526e70;
+}
+.entry-close {
+  position: absolute;
+  right: 20px;
+  top: 18px;
+  border: 0;
+  background: transparent;
+  color: #274752;
+  font-size: 22px;
+  cursor: pointer;
+}
+.entry-card form {
+  display: grid;
+  gap: 14px;
+}
+.entry-card label {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.entry-card input {
+  border: 1px solid #b7c7bd;
+  border-radius: 10px;
+  background: #fffef9;
+  color: #243f4b;
+  padding: 12px;
+  font: inherit;
+}
+.entry-card small {
+  font-size: 10px;
+  line-height: 1.5;
+}
+.entry-card .entry-note {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.resident-choices {
+  display: grid;
+  gap: 8px;
+  margin: 22px 0;
+}
+.resident-choices > button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border: 1px solid #b8d0bc;
+  border-radius: 13px;
+  background: #edf4df;
+  color: #243f4b;
+  padding: 12px;
+  cursor: pointer;
+}
+.resident-choices strong,
+.resident-choices small {
+  display: block;
+}
+.resident-choices button > span:last-child {
+  margin-left: auto;
+}
+.resident-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #b6d1b3;
+  color: #24453d;
+  font-size: 19px;
+}
+.landing :focus-visible {
+  outline: 3px solid #5284b6;
+  outline-offset: 4px;
+}
+@media (max-width: 760px) {
+  .landing-nav > a:not(.landing-logo) {
+    display: none;
+  }
+  .landing-hero {
+    grid-template-columns: 1fr;
+    padding-top: 50px;
+    min-height: 0;
+  }
+  .landing-copy {
+    z-index: 1;
+  }
+  .landing-copy h1 {
+    font-size: 64px;
+  }
+  .landing-world {
+    margin-top: 0;
+    transform: none;
+  }
+  .landing-life {
+    padding-top: 35px;
+  }
+  .landing-life h2 {
+    font-size: 30px;
+  }
+  .landing-features {
+    grid-template-columns: 1fr;
+    gap: 25px;
+  }
+  .landing-footer {
+    flex-direction: column;
+  }
+  .landing-nav {
+    gap: 12px;
+  }
+  .landing-logo {
+    font-size: 18px;
+  }
+  .landing-nav .game-button {
+    padding: 10px 15px;
+    gap: 15px;
+  }
+}
+
+.managed-wallet-setup ol {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.managed-wallet-setup li[aria-current="step"] {
+  font-weight: 800;
+  color: #225e54;
+}
+.managed-wallet-setup .phone-receipt {
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+}
+.managed-wallet-setup .game-button {
+  margin: 0.4rem;
+}

@@ -2,6 +2,7 @@ import type { TransactionSql } from "postgres";
 import { AppError } from "./errors.js";
 import { appendWorldEvent, appendWorldEvents } from "./world-events.js";
 import { advancePath, planMove, sceneById, validateInteraction } from "./world-navigation.js";
+import { facingForStep, isVenueOpen as operatesAt } from "@quiz-city/world-data";
 
 export type PresenceRow = {
   session_id: string;
@@ -69,33 +70,6 @@ function bucketAfterConsumption(
   const elapsed = updatedAt ? Math.max(0, now.getTime() - new Date(updatedAt).getTime()) : 0;
   const available = Math.min(burst, (tokens ?? burst) + elapsed / refillMs);
   return available >= 1 ? available - 1 : null;
-}
-
-function operatesAt(hours: unknown, now: Date): boolean {
-  if (!hours || typeof hours !== "object" || Array.isArray(hours)) return true;
-  const { open, close } = hours as { open?: unknown; close?: unknown };
-  if (
-    typeof open !== "string" ||
-    typeof close !== "string" ||
-    !/^([01]\d|2[0-3]):[0-5]\d$/.test(open) ||
-    !/^([01]\d|2[0-3]):[0-5]\d$/.test(close)
-  ) {
-    return false;
-  }
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Accra",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const hour = Number(parts.find((part) => part.type === "hour")?.value);
-  const minute = Number(parts.find((part) => part.type === "minute")?.value);
-  const current = hour * 60 + minute;
-  const toMinute = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
-  const start = toMinute(open);
-  const end = toMinute(close);
-  if (start === end) return true;
-  return start < end ? current >= start && current < end : current >= start || current < end;
 }
 
 async function priorReceipt<T>(
@@ -252,12 +226,23 @@ export async function applyInteraction(
   if (interactionTokens === null) {
     throw new AppError("RATE_LIMITED", "interaction rate limited", 429);
   }
-  const result = validateInteraction(
+  let result = validateInteraction(
     input.sceneId,
     { x: presence.x, y: presence.y },
     input.targetId,
     input.targetType,
   );
+  if (input.targetType === "npc") {
+    const [npc] = await transaction<{ x: number; y: number }[]>`
+      select x, y from npc_runtime where npc_id = ${input.targetId} and scene_id = ${presence.scene_id} for share
+    `;
+    if (!npc) throw new AppError("NOT_FOUND", "TARGET_NOT_FOUND", 404);
+    const inRange = Math.max(Math.abs(presence.x - npc.x), Math.abs(presence.y - npc.y)) <= 2;
+    result = {
+      reason: inRange ? "OK" : "OUT_OF_RANGE",
+      target: { id: input.targetId, x: npc.x, y: npc.y, radius: 2 },
+    };
+  }
   if (result.reason !== "OK" || !result.target) throw new AppError("CONFLICT", result.reason, 409);
 
   if (input.targetType === "building") {
@@ -272,12 +257,6 @@ export async function applyInteraction(
     if (building.status !== "active" || !operatesAt(building.operating_hours, options.now)) {
       throw new AppError("CONFLICT", "TARGET_CLOSED", 409);
     }
-  } else if (input.targetType === "npc") {
-    const [npc] = await transaction<{ npc_id: string }[]>`
-      select npc_id from npc_runtime
-      where npc_id = ${input.targetId} and scene_id = ${presence.scene_id}
-    `;
-    if (!npc) throw new AppError("NOT_FOUND", "TARGET_NOT_FOUND", 404);
   } else if (input.targetType === "business") {
     const [business] = await transaction<
       { status: "open" | "closed" | "suspended"; operating_hours: unknown }[]
@@ -474,22 +453,15 @@ export async function advancePresence(
   }
   const { position, remaining } = advancePath(presence.path, tiles);
   const persistedPath = remaining.length > 0 ? [position, ...remaining] : [];
-  const facing =
-    position.x > presence.x
-      ? "east"
-      : position.x < presence.x
-        ? "west"
-        : position.y > presence.y
-          ? "south"
-          : "north";
+  const facing = facingForStep(position.x - presence.x, position.y - presence.y);
   const steps = Math.min(tiles, Math.max(0, presence.path.length - 1));
-  const [updated] = await transaction<{ state_version: string }[]>`
+  const [updated] = await transaction<{ state_version: string; presence_generation: string }[]>`
     update player_presence set
       x = ${position.x}, y = ${position.y}, facing = ${facing},
       path = ${transaction.json(persistedPath as never)},
       path_index = path_index + ${steps}, heartbeat_at = ${now}, state_version = state_version + 1
     where session_id = ${presence.session_id} and state_version = ${presence.state_version}::bigint
-    returning state_version::text as state_version
+    returning state_version::text as state_version, presence_generation::text as presence_generation
   `;
   if (!updated) return null;
   await appendWorldEvent(transaction, {
@@ -505,7 +477,7 @@ export async function advancePresence(
       sceneId: presence.scene_id,
     },
     cityTime: now,
-    idempotencyKey: `movement:${presence.session_id}:${updated.state_version}`,
+    idempotencyKey: `movement:${updated.presence_generation}:${updated.state_version}`,
   });
   return { position, stateVersion: updated.state_version };
 }

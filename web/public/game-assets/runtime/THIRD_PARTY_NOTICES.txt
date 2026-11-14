@@ -1,0 +1,17 @@
+QUIZ CITY - GAME ASSET NOTICES
+
+gridwright-city
+Art by Gridwright — https://gridwrightstudio.itch.io
+Licence: world/city/LICENSE.txt
+
+gridwright-interiors
+Art by Gridwright — https://gridwrightstudio.itch.io
+Licence: world/interiors/LICENSE.txt
+
+gridwright-city-people
+Art by Gridwright — https://gridwrightstudio.itch.io
+Licence: characters/city-people/LICENSE.txt
+
+knowledge-visual-slice
+Building/campus/furniture art: supplied by the project owner; creator attribution pending source identification.
+Permission evidence: docs/new-assets-audit.md (owner confirmation; no supplied licence)

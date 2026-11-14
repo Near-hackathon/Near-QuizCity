@@ -1,0 +1,99 @@
+.friend-quiz {
+  color: #233e48;
+}
+.friend-quiz header h3 {
+  font-size: 1.6rem;
+  margin: 0.4rem 0;
+}
+.match-ticket {
+  background: #dcebc8;
+  border: 1px solid #9db89c;
+  border-radius: 20px;
+  padding: 20px;
+  margin: 16px 0;
+}
+.match-code {
+  display: block;
+  font: 700 1.6rem monospace;
+  letter-spacing: 0.12em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.match-ticket dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.match-ticket dd {
+  margin: 0;
+  font-weight: bold;
+}
+.match-ticket small {
+  display: block;
+  line-height: 1.5;
+}
+.match-residents {
+  padding: 0;
+  list-style: none;
+}
+.match-residents li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid #b8cbb4;
+}
+.match-countdown {
+  font-size: 2rem;
+  text-align: center;
+}
+.match-fee-note {
+  padding: 12px;
+  background: #edf1e3;
+  border-radius: 10px;
+  line-height: 1.5;
+}
+.match-result {
+  margin-top: 16px;
+  border-radius: 16px;
+  background: #edf1e3;
+  padding: 16px;
+}
+.match-hash {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.7rem;
+}
+.friend-quiz details article {
+  margin: 16px 0;
+}
+.friend-quiz details > button {
+  display: block;
+  margin-top: 10px;
+}
+.city-modal .phone-form .match-publish {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.city-modal .phone-form .match-publish input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+.match-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.match-browser {
+  border-top: 1px solid #b8cbb4;
+  margin-top: 20px;
+  padding-top: 10px;
+}
+.match-browser label {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}

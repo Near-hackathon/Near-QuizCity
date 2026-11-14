@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { advancePath, planMove, sceneById, validateInteraction } from "../src/world-navigation.js";
+import { npcTravelDoor } from "../src/npc-travel.js";
+
+test("NPC travel uses connected doors between interiors and rejects unavailable routes", () => {
+  assert.equal(npcTravelDoor("apartment-interior", "library-interior").id, "apartment-spawn");
+  assert.equal(npcTravelDoor("city-district", "quiz-centre-interior").id, "quiz-door-exterior");
+  assert.equal(npcTravelDoor("library-interior", "cafe-interior").id, "library-spawn");
+  assert.throws(() => npcTravelDoor("missing", "city-district"), /unavailable/);
+  assert.throws(() => npcTravelDoor("library-interior", "missing"), /no connected/);
+});
 
 test("movement plans from authoritative position and rejects blocked destinations", () => {
   const plan = planMove("city-district", { x: 3, y: 3 }, { x: 10, y: 10 });
@@ -52,5 +61,5 @@ test("interactions enforce scene proximity and target existence", () => {
 });
 
 test("scene data is versioned and available to the server", () => {
-  assert.equal(sceneById("library-interior").assetVersion, "1");
+  assert.equal(sceneById("library-interior").assetVersion, "4");
 });

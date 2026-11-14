@@ -8,6 +8,8 @@ export const TEST_PUBLIC_KEY = disposable.getPublicKey().toString();
 
 export const testEnv: NodeJS.ProcessEnv = {
   APP_ENV: "test",
+  AUTO_TESTNET_WALLETS: "0",
+  TESTNET_WALLET_ENCRYPTION_KEY: "",
   DEMO_MODE: "0",
   DATABASE_URL: "postgresql://quizcity:quizcity@localhost:5432/quizcity",
   PGSSL: "disable",
@@ -28,6 +30,11 @@ export function makeTestConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     appEnv: "test",
     demoMode: false,
+    autoTestnetWallets: false,
+    testnetWalletEncryptionKey: null,
+    testnetWalletFaucetUrl: "https://helper.nearprotocol.com/account",
+    testnetWalletDailyLimit: 8,
+    testnetWalletAccountSuffix: "testnet",
     demoAccountsFile: null,
     port: 8787,
     host: "127.0.0.1",

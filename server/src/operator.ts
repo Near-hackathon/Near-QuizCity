@@ -176,3 +176,11 @@ export async function payJob(
     reference,
   });
 }
+
+/** Explicit city-economy methods; a restricted v2 payout key is required after deployment. */
+export async function submitCityPayment(
+  method: "settle_escrow" | "npc_purchase",
+  args: Record<string, unknown>,
+): Promise<PayoutSubmission> {
+  return submit(method, args);
+}

@@ -90,6 +90,14 @@ describe("wallet authentication adapter", () => {
     ).rejects.toThrow(/user rejected/);
   });
 
+  it("requires a fresh wallet proof when linking a remembered browser profile", async () => {
+    api.authMe.mockResolvedValue({ accountId: "alice.testnet", roles: ["player"], expiresAt: "2099-01-01" });
+    const wallet = signer();
+    await ensureAuth("alice.testnet", wallet, true);
+    expect(wallet.signMessage).toHaveBeenCalledTimes(1);
+    expect(api.authVerify).toHaveBeenCalledTimes(1);
+  });
+
   it("reuses an existing server session for the same account", async () => {
     api.authMe.mockResolvedValue({
       accountId: "alice.testnet",

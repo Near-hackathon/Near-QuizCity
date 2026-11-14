@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { Sql, TransactionSql } from "postgres";
 import type { ValidatedEvent } from "./event-validation.js";
 import { appendWorldEvents, type WorldEventRow } from "./world-events.js";
@@ -17,14 +18,17 @@ export async function resolveProjectionScene(
     event.event === "service_paid" ||
     event.event === "business_created" ||
     event.event === "business_transferred" ||
-    event.event === "business_withdrawal"
+    event.event === "business_withdrawal" ||
+    event.event === "business_sold" ||
+    event.event === "order_refunded" ||
+    event.event === "admission_refunded"
   ) {
     const businessId = String(data.business_id ?? data.id ?? "");
     if (!businessId) return null;
     const [row] = await client<{ scene_id: string }[]>`
-      select b.exterior_scene_id as scene_id
-      from businesses bu join buildings b on b.business_id = bu.id
-      where bu.id = ${Number(businessId)} limit 1
+      select coalesce(b.exterior_scene_id,case when p.district='knowledge' then 'city-district' end) as scene_id
+      from businesses bu left join buildings b on b.business_id = bu.id join properties p on p.id=bu.property_id
+      where bu.id = ${Number(businessId)} and exists(select 1 from scenes where id=coalesce(b.exterior_scene_id,case when p.district='knowledge' then 'city-district' end) and active=true) limit 1
     `;
     return row?.scene_id ?? null;
   }
@@ -35,8 +39,8 @@ export async function resolveProjectionScene(
     event.event === "property_transferred"
   ) {
     const [row] = await client<{ scene_id: string }[]>`
-      select b.exterior_scene_id as scene_id
-      from buildings b where b.property_id = ${Number(data.id ?? 0)} limit 1
+      select coalesce(b.exterior_scene_id,case when p.district='knowledge' then 'city-district' end) as scene_id
+      from properties p left join buildings b on b.property_id=p.id where p.id = ${Number(data.id ?? 0)} and exists(select 1 from scenes where id=coalesce(b.exterior_scene_id,case when p.district='knowledge' then 'city-district' end) and active=true) limit 1
     `;
     return row?.scene_id ?? null;
   }
@@ -95,6 +99,12 @@ export async function appendJobPresentation(
   ) {
     return [];
   }
+  const [employer] = await transaction<
+    { employer_wallet: string; has_open: boolean }[]
+  >`select j.employer_wallet,exists(select 1 from jobs other where other.employer_wallet=j.employer_wallet and other.status='open') as has_open from jobs j where j.id=${input.jobId}`;
+  const npc = employer?.employer_wallet.startsWith("npc:")
+    ? { npcId: employer.employer_wallet.slice(4), hasOpenJobs: employer.has_open }
+    : {};
   return appendWorldEvents(transaction, [
     {
       streamId: `scene:${sceneId}`,
@@ -102,7 +112,7 @@ export async function appendJobPresentation(
       cityTime: input.cityTime ?? new Date(),
       type: "job.presentation_changed",
       entity: { entityType: "job", entityId: input.jobId },
-      payload: { jobId: input.jobId, status: input.status, txHash: input.txHash ?? null },
+      payload: { jobId: input.jobId, status: input.status, txHash: input.txHash ?? null, ...npc },
     },
   ]);
 }
@@ -123,5 +133,47 @@ export async function appendEconomicProjection(
 ): Promise<WorldEventRow[]> {
   const drafts = projectEconomicWorldEvents(event, sceneId);
   if (drafts.length === 0) return [];
-  return appendWorldEvents(transaction, drafts);
+  const rows = await appendWorldEvents(transaction, drafts);
+  const businessId = String(
+    event.data[0].business_id ??
+      (String(event.data[0].entity_id ?? "").startsWith("business:")
+        ? String(event.data[0].entity_id).slice(9)
+        : ""),
+  );
+  if (/^[1-9][0-9]*$/.test(businessId))
+    rows.push(
+      ...(await appendBusinessPresentation(transaction, businessId, event.chainTimestamp ?? new Date())),
+    );
+  return rows;
+}
+
+export async function appendBusinessPresentation(
+  tx: TransactionSql,
+  businessId: string,
+  now: Date | string = new Date(),
+) {
+  const [shop] =
+    await tx`select b.id,b.name,b.property_id,b.status,b.revenue_total::text as revenue_total,coalesce((select sum(i.on_hand-i.reserved) from business_items i where i.business_id=b.id and i.active),0)::int as stock,coalesce(building.exterior_scene_id,case when p.district='knowledge' then 'city-district' end) as scene_id from businesses b join properties p on p.id=b.property_id left join buildings building on building.business_id=b.id where b.id=${businessId} and exists(select 1 from scenes where id=coalesce(building.exterior_scene_id,case when p.district='knowledge' then 'city-district' end) and active=true)`;
+  if (!shop) return [];
+  const payload = {
+    businessId,
+    name: shop.name,
+    propertyId: String(shop.property_id),
+    revenueTotal: shop.revenue_total,
+    status: shop.status,
+    stockAvailable: shop.stock,
+  };
+  const [latest] =
+    await tx`select payload from world_events where entity_type='business' and entity_id=${businessId} and event_type='business.state_changed' order by id desc limit 1`;
+  if (latest && isDeepStrictEqual(latest.payload, payload)) return [];
+  return appendWorldEvents(tx, [
+    {
+      streamId: `scene:${shop.scene_id}`,
+      sceneId: shop.scene_id,
+      cityTime: now,
+      type: "business.state_changed",
+      entity: { entityType: "business", entityId: businessId },
+      payload,
+    },
+  ]);
 }

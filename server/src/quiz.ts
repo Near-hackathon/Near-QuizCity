@@ -78,7 +78,13 @@ export async function startQuizAttempt(
     rewardAmount?: number;
     windowMs?: number;
   },
-): Promise<{ attemptId: string; questions: SnapshotQuestion[] }> {
+): Promise<{
+  attemptId: string;
+  questions: SnapshotQuestion[];
+  expiresAt: string;
+  passScore: number;
+  rewardAmount: string;
+}> {
   const now = params.now ?? new Date();
   const rewardDay = now.toISOString().slice(0, 10);
 
@@ -90,12 +96,35 @@ export async function startQuizAttempt(
         pass_score: number;
         reward_amount: string;
         attempt_duration_seconds: number;
+        creator_draft_id: string | null;
+        entry_fee: string;
       }[]
     >`
-      select id, question_count, pass_score, reward_amount, attempt_duration_seconds
-      from quizzes where id = ${params.quizId} and status = 'live'
+      select id, question_count, pass_score, reward_amount, attempt_duration_seconds, creator_draft_id, entry_fee
+      from quizzes where id = ${params.quizId} and status = 'live' for update
     `;
     if (!quiz) throw new QuizError("quiz is not live", 404);
+    if (!quiz.creator_draft_id && BigInt(quiz.entry_fee) > 0n)
+      throw new QuizError("paid quizzes require an approved venue admission policy", 409);
+    let fundingEscrow: string | null = null;
+    let admission: string | null = null;
+    if (quiz.creator_draft_id) {
+      const [venue] = await transaction`select * from quiz_drafts where id=${quiz.creator_draft_id}`;
+      if (!venue || venue.status !== "published" || now < venue.opens_at || now >= venue.closes_at)
+        throw new QuizError("venue is closed", 409);
+      if (venue.author_account === params.accountId)
+        throw new QuizError("creators cannot collect their own prizes", 403);
+      const [occupancy] =
+        await transaction`select count(*)::int as n from quiz_attempts where quiz_id=${params.quizId} and status='started' and expires_at>${now}`;
+      if (occupancy.n >= venue.capacity) throw new QuizError("venue is full", 409);
+      if (BigInt(venue.entry_fee) > 0n) {
+        const [paid] =
+          await transaction`select operation_id from quiz_admissions where quiz_id=${params.quizId} and player_account=${params.accountId} and attempt_id is null and refunded_at is null and refund_operation_id is null and paid_at is not null for update`;
+        if (!paid) throw new QuizError("confirm venue admission in your phone before starting", 409);
+        admission = paid.operation_id;
+      }
+      fundingEscrow = venue.escrow_id;
+    }
 
     const questions = await transaction<
       {
@@ -142,6 +171,10 @@ export async function startQuizAttempt(
       )
     `;
 
+    if (fundingEscrow)
+      await transaction`update quiz_attempts set funding_escrow_id=${fundingEscrow} where id=${attemptId}`;
+    if (admission)
+      await transaction`update quiz_admissions set attempt_id=${attemptId} where operation_id=${admission}`;
     const snapshots: SnapshotQuestion[] = [];
     for (const [position, question] of questions.entries()) {
       await transaction`
@@ -166,7 +199,7 @@ export async function startQuizAttempt(
       });
     }
 
-    return { attemptId, questions: snapshots };
+    return { attemptId, questions: snapshots, expiresAt: expiresAt.toISOString(), passScore, rewardAmount };
   });
 }
 

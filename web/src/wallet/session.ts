@@ -16,6 +16,7 @@ export function loadWalletSession(): WalletSession | null {
       return null;
     }
     return {
+      profileId: typeof parsed.profileId === "string" ? parsed.profileId : undefined,
       accountId: parsed.accountId,
       publicKey: typeof parsed.publicKey === "string" ? parsed.publicKey : undefined,
       networkId: parsed.networkId,

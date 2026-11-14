@@ -73,14 +73,45 @@ test("two worker instances produce one decision", async () => {
     await seedNpc(sql);
     const first = connectTestPool(url, schema, 2);
     const second = connectTestPool(url, schema, 2);
+    const blocker = await first.reserve();
+    const probe = await second.reserve();
+    let pending: ReturnType<typeof tickNpcs> | undefined;
     try {
-      const [a, b] = await Promise.all([tickNpcs(deps(first)), tickNpcs(deps(second))]);
+      // Hold the state row so the first worker keeps its leader lock while the
+      // second worker attempts the same tick. Promise.all alone can run serially.
+      await blocker`begin`;
+      await blocker`select npc_id from npc_state where npc_id = 'professor-kofi' for update`;
+      pending = tickNpcs(deps(first));
+      const deadline = Date.now() + 3000;
+      for (;;) {
+        const [lock] = await probe`
+          select exists (
+            select 1 from pg_locks
+            where locktype = 'advisory' and granted
+              and objid = (hashtext('quizcity-npc-worker')::bigint & 4294967295)::oid
+              and database = (select oid from pg_database where datname = current_database())
+          ) as held
+        `;
+        if (lock.held) break;
+        if (Date.now() > deadline) throw new Error("first worker did not acquire leadership");
+      }
+      const b = await tickNpcs(deps(second));
+      assert.equal(b.reason, "leader");
+      await blocker`commit`;
+      const a = await pending;
       assert.equal(Number(a.created) + Number(b.created), 1);
       const [jobs] = await sql`select count(*)::int as count from jobs`;
       assert.equal(jobs.count, 1);
     } finally {
-      await first.end();
-      await second.end();
+      await blocker`rollback`;
+      blocker.release();
+      probe.release();
+      try {
+        await pending;
+      } finally {
+        await first.end();
+        await second.end();
+      }
     }
   });
 });
@@ -107,6 +138,7 @@ test("large balances remain exact and insufficient balances post nothing", async
     const large = await tickNpcs(deps(sql, "90071992547409930"));
     assert.equal(large.created, true);
 
+    await sql`delete from job_research_tasks`;
     await sql`delete from jobs`;
     await sql`update npc_state set state = '{}'::jsonb, budget = '0'`;
     const insufficient = await tickNpcs(deps(sql, "50"));
@@ -164,6 +196,7 @@ test("NPC boundaries cover zero, exact, one-short, and no-template decisions", a
     const [jobs] = await sql`select count(*)::int as count from jobs`;
     assert.equal(jobs.count, 1);
 
+    await sql`delete from job_research_tasks`;
     await sql`delete from jobs`;
     await sql`update npc_state set state = '{}'::jsonb, budget = '1000'`;
     const noTemplate = await tickNpcs({ ...deps(sql, "1000"), templates: [] });

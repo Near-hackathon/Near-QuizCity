@@ -7,9 +7,15 @@ export type ChainPlayer = {
   starter_claimed: boolean;
 };
 
-export {
-  clearWalletSession as clearSession,
-  loadWalletSession as loadSession,
-  saveWalletSession as saveSession,
-} from "./wallet/session";
+export { loadWalletSession as loadSession } from "./wallet/session";
+import { clearWalletSession, saveWalletSession } from "./wallet/session";
+import type { WalletSession } from "./wallet/types";
+export function clearSession() {
+  clearWalletSession();
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("qc:session-changed"));
+}
+export function saveSession(session: WalletSession) {
+  saveWalletSession(session);
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("qc:session-changed"));
+}
 export type { WalletSession as Session } from "./wallet/types";

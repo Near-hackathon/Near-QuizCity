@@ -602,3 +602,22 @@ test("wrong network, recipient, and stored message binding are rejected", async 
     );
   });
 });
+
+test("wallet authentication cannot impersonate a reserved browser identity", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await runMigrations(postgresMigrationStore(sql), migrations);
+    const deps = authDeps();
+    const accountId = "guest-00000000-0000-4000-8000-000000000001";
+    await assert.rejects(issueNonce(sql, runtime, accountId, deps), { code: "FORBIDDEN" });
+    await assert.rejects(
+      verifyLogin(
+        sql,
+        runtime,
+        { accountId, nonce: "irrelevant", signature: "irrelevant", publicKey: "irrelevant" },
+        deps,
+      ),
+      { code: "FORBIDDEN" },
+    );
+    assert.equal((await sql`select count(*)::int as n from auth_nonces`)[0].n, 0);
+  });
+});

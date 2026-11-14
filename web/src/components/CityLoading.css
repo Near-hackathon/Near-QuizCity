@@ -1,0 +1,64 @@
+.city-loading {
+  min-height: calc(100vh - 5rem);
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background: radial-gradient(ellipse at top, #243f48, #101b25 70%);
+  color: #fff0d1;
+}
+.city-loading-overlay {
+  position: fixed;
+  inset: 4rem 0 0;
+  z-index: 40;
+}
+.city-loading-card {
+  width: min(28rem, 100%);
+  text-align: center;
+}
+.city-loading-brand {
+  color: #efd5a6;
+  font-weight: bold;
+  letter-spacing: 0.3em;
+}
+.city-loading h1 {
+  font-size: 1.8rem;
+  letter-spacing: 0.02em;
+}
+.city-loading-track {
+  height: 4px;
+  background: #435962;
+  overflow: hidden;
+  margin: 1.5rem 0;
+  border-radius: 4px;
+}
+.city-loading-track span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  background: #efd5a6;
+  animation: city-loading-travel 1.6s ease-in-out infinite alternate;
+}
+.city-loading-caption {
+  color: #d0d9dc;
+}
+.city-loading a {
+  color: #efd5a6;
+  text-underline-offset: 0.2em;
+}
+.city-loading a:focus-visible {
+  outline: 3px solid #a2e2e2;
+  outline-offset: 5px;
+}
+@keyframes city-loading-travel {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(150%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .city-loading-track span {
+    animation: none;
+  }
+}

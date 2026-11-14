@@ -228,10 +228,10 @@ test("world seed is idempotent and the demo city is connected", async () => {
     `;
     assert.deepEqual(counts[0], {
       scenes: 6,
-      spawns: 21,
+      spawns: 41,
       buildings: 5,
-      schedules: 6,
-      runtime: 1,
+      schedules: 33,
+      runtime: 6,
       events: 1,
     });
 
@@ -260,7 +260,7 @@ test("world seed is idempotent and the demo city is connected", async () => {
       select npc_id, sequence, end_minute > start_minute as valid
       from npc_schedules order by npc_id, sequence
     `;
-    assert.equal(schedules.length, 6);
+    assert.equal(schedules.length, 33);
     assert.ok(schedules.every((schedule) => schedule.valid));
 
     const [runtime] = await sql`

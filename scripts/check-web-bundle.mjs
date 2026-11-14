@@ -9,6 +9,8 @@ export const BUDGETS = {
   initial: { raw: 300_000, gzip: 100_000 },
   routeChunk: { raw: 200_000, gzip: 70_000 },
   wallet: { raw: 500_000, gzip: 160_000 },
+  game: { raw: 1_600_000, gzip: 460_800 },
+  // Preserve the Phase 5 application budget independently of the new lazy engine.
   total: { raw: 800_000, gzip: 250_000 },
 };
 
@@ -49,7 +51,10 @@ export function inspectBundle(dist) {
   const initial = sizes.get(entry.file);
   if (!initial) throw new Error(`entry asset is missing: ${entry.file}`);
 
-  const optionalRoots = (entry.dynamicImports ?? []).filter((key) => !key.startsWith("src/routes/"));
+  const gameRoots = Object.keys(manifest).filter((key) => key === "src/game/createGame.ts");
+  const optionalRoots = (entry.dynamicImports ?? []).filter(
+    (key) => !key.startsWith("src/routes/") && !key.startsWith("src/game/"),
+  );
   const optionalKeys = new Set();
   const visit = (key) => {
     if (optionalKeys.has(key) || !manifest[key]) return;
@@ -59,22 +64,55 @@ export function inspectBundle(dist) {
   for (const key of optionalRoots) visit(key);
   optionalKeys.delete("index.html");
   const optionalFiles = new Set([...optionalKeys].map((key) => manifest[key]?.file).filter(Boolean));
+  const gameKeys = new Set();
+  const visitGame = (key) => {
+    if (gameKeys.has(key) || !manifest[key]) return;
+    gameKeys.add(key);
+    if (manifest[key].file === entry.file) return;
+    for (const dependency of manifest[key].imports ?? []) visitGame(dependency);
+  };
+  for (const key of gameRoots) visitGame(key);
+  const eagerClosure = (root) => {
+    const keys = new Set();
+    const walk = (key) => {
+      if (keys.has(key) || !manifest[key]) return;
+      keys.add(key);
+      for (const dependency of manifest[key].imports ?? []) walk(dependency);
+    };
+    walk(root);
+    return keys;
+  };
+  const protectedRoots = ["index.html", "src/routes/manage.tsx", "src/routes/admin.tsx"];
+  const engineKeys = new Set([...gameRoots, ...Object.keys(manifest).filter((key) => /phaser/i.test(key))]);
+  const leaked = protectedRoots.filter((root) => [...eagerClosure(root)].some((key) => engineKeys.has(key)));
+  const applicationKeys = new Set(protectedRoots.flatMap((root) => [...eagerClosure(root)]));
+  const gameFiles = new Set(
+    [...gameKeys]
+      .filter((key) => !applicationKeys.has(key))
+      .map((key) => manifest[key]?.file)
+      .filter(Boolean),
+  );
 
   let wallet = { raw: 0, gzip: 0 };
   for (const file of optionalFiles) wallet = add(wallet, sizes.get(file) ?? { raw: 0, gzip: 0 });
+  let game = { raw: 0, gzip: 0 };
+  for (const file of gameFiles) game = add(game, sizes.get(file) ?? { raw: 0, gzip: 0 });
   let total = { raw: 0, gzip: 0 };
   for (const size of sizes.values()) total = add(total, size);
+  const application = { raw: total.raw - game.raw, gzip: total.gzip - game.gzip };
 
   const failures = [
     ...overBudget("initial entry", initial, BUDGETS.initial),
     ...overBudget("optional wallet", wallet, BUDGETS.wallet),
-    ...overBudget("all JavaScript", total, BUDGETS.total),
+    ...overBudget("game", game, BUDGETS.game),
+    ...overBudget("application JavaScript excluding lazy engine", application, BUDGETS.total),
+    ...leaked.map((root) => `Phaser is eagerly reachable from ${root}`),
   ];
   for (const [file, size] of sizes) {
-    if (file === entry.file || optionalFiles.has(file)) continue;
+    if (file === entry.file || optionalFiles.has(file) || gameFiles.has(file)) continue;
     failures.push(...overBudget(`route chunk ${basename(file)}`, size, BUDGETS.routeChunk));
   }
-  return { initial, wallet, total, failures };
+  return { initial, wallet, game, application, total, failures };
 }
 
 function main() {
@@ -93,7 +131,7 @@ function main() {
   }
   const result = inspectBundle(join(root, "web", "dist"));
   console.log(
-    `Bundle budgets: initial ${result.initial.raw}/${result.initial.gzip}, wallet ${result.wallet.raw}/${result.wallet.gzip}, total ${result.total.raw}/${result.total.gzip} (raw/gzip bytes)`,
+    `Bundle budgets: initial ${result.initial.raw}/${result.initial.gzip}, wallet ${result.wallet.raw}/${result.wallet.gzip}, game ${result.game.raw}/${result.game.gzip}, total ${result.total.raw}/${result.total.gzip} (raw/gzip bytes)`,
   );
   if (result.failures.length) throw new Error(`bundle budget failed:\n- ${result.failures.join("\n- ")}`);
 }

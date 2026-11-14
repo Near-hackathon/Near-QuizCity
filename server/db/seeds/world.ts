@@ -1,4 +1,5 @@
 import type { Sql } from "postgres";
+import { seedResidents } from "./residents.js";
 
 /**
  * Minimal connected demo city. Every statement is idempotent so reseeding does
@@ -6,20 +7,21 @@ import type { Sql } from "postgres";
  */
 export async function seedWorld(sql: Sql): Promise<void> {
   await sql`
-    insert into scenes (id, name, scene_type, asset_key, width, height)
+    insert into scenes (id, name, scene_type, asset_key, width, height, asset_version)
     values
-      ('city-district', 'Quiz City District', 'exterior', 'maps/city-district', 64, 48),
-      ('library-interior', 'City Library', 'interior', 'maps/library', 24, 18),
-      ('quiz-centre-interior', 'Quiz Centre', 'interior', 'maps/quiz-centre', 20, 16),
-      ('apartment-interior', 'Professor Kofi Apartment', 'interior', 'maps/apartment', 14, 12),
-      ('university-interior', 'Quiz City University', 'interior', 'maps/university', 28, 20),
-      ('cafe-interior', 'Knowledge Cafe', 'interior', 'maps/cafe', 16, 12)
+      ('city-district', 'Quiz City District', 'exterior', 'maps/city-district', 64, 48, 6),
+      ('library-interior', 'City Library', 'interior', 'maps/library', 24, 18, 4),
+      ('quiz-centre-interior', 'Quiz Centre', 'interior', 'maps/quiz-centre', 20, 16, 5),
+      ('apartment-interior', 'Professor Reed’s Home', 'interior', 'maps/apartment', 18, 14, 5),
+      ('university-interior', 'Quiz City University', 'interior', 'maps/university', 28, 20, 4),
+      ('cafe-interior', 'Knowledge Cafe', 'interior', 'maps/cafe', 16, 12, 4)
       on conflict (id) do update set
         name = excluded.name,
         scene_type = excluded.scene_type,
         asset_key = excluded.asset_key,
         width = excluded.width,
         height = excluded.height,
+        asset_version = excluded.asset_version,
         active = true,
         updated_at = now()
   `;
@@ -36,8 +38,8 @@ export async function seedWorld(sql: Sql): Promise<void> {
       ('quiz-default', 'quiz-centre-interior', 'player_default', 10, 11, 'south'),
       ('library-desk', 'library-interior', 'npc_waypoint', 6, 8, 'south'),
       ('apartment-door-exterior', 'city-district', 'door', 10, 36, 'north'),
-      ('apartment-spawn', 'apartment-interior', 'door', 7, 10, 'north'),
-      ('apartment-default', 'apartment-interior', 'player_default', 7, 7, 'south'),
+      ('apartment-spawn', 'apartment-interior', 'door', 9, 12, 'north'),
+      ('apartment-default', 'apartment-interior', 'player_default', 9, 9, 'south'),
       ('apartment-home', 'apartment-interior', 'npc_waypoint', 6, 5, 'south'),
       ('university-door-exterior', 'city-district', 'door', 50, 10, 'north'),
       ('university-spawn', 'university-interior', 'door', 14, 18, 'north'),
@@ -68,7 +70,7 @@ export async function seedWorld(sql: Sql): Promise<void> {
       ('building-quiz-centre', 'city-district', 'quiz-centre-interior', 'quiz_centre',
        'Quiz Centre', 40, 12, 'north', '{"open":"09:00","close":"22:00"}'::jsonb),
       ('building-apartment', 'city-district', 'apartment-interior', 'apartment',
-       'Professor Kofi Apartment', 10, 36, 'north', '{}'::jsonb),
+       'Professor Reed’s Home', 10, 36, 'north', '{}'::jsonb),
       ('building-university', 'city-district', 'university-interior', 'university',
        'Quiz City University', 50, 10, 'north', '{"open":"07:00","close":"21:00"}'::jsonb),
       ('building-cafe', 'city-district', 'cafe-interior', 'restaurant',
@@ -200,4 +202,5 @@ export async function seedWorld(sql: Sql): Promise<void> {
       )
     `;
   });
+  await seedResidents(sql);
 }

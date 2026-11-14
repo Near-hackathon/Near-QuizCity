@@ -1,0 +1,71 @@
+{
+ "image": "street_1x.png",
+ "scale": 1,
+ "grid": 16,
+ "size": [
+  512,
+  48
+ ],
+ "sprites": {
+  "street_lamp_sw": {
+   "x": 0,
+   "y": 0,
+   "w": 32,
+   "h": 48
+  },
+  "street_lamp_sw_lit": {
+   "x": 32,
+   "y": 0,
+   "w": 32,
+   "h": 48
+  },
+  "traffic_light_sw_red": {
+   "x": 64,
+   "y": 0,
+   "w": 32,
+   "h": 48
+  },
+  "traffic_light_sw_amber": {
+   "x": 96,
+   "y": 0,
+   "w": 32,
+   "h": 48
+  },
+  "traffic_light_sw_green": {
+   "x": 128,
+   "y": 0,
+   "w": 32,
+   "h": 48
+  },
+  "bench_sw": {
+   "x": 192,
+   "y": 0,
+   "w": 32,
+   "h": 32
+  },
+  "trash_bin": {
+   "x": 224,
+   "y": 0,
+   "w": 32,
+   "h": 32
+  },
+  "hydrant": {
+   "x": 256,
+   "y": 0,
+   "w": 32,
+   "h": 32
+  },
+  "bollard": {
+   "x": 288,
+   "y": 0,
+   "w": 32,
+   "h": 16
+  },
+  "tree_round": {
+   "x": 160,
+   "y": 0,
+   "w": 32,
+   "h": 48
+  }
+ }
+}

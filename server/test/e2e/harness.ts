@@ -40,7 +40,12 @@ export async function callTx(
   return result.transactionReceipt.hash;
 }
 
-export async function startStack() {
+export async function startStack(options: { city?: boolean; managed?: boolean } = {}) {
+  const payoutMethods = [
+    "credit_reward",
+    "pay_job",
+    ...(options.city ? ["settle_escrow", "npc_purchase"] : []),
+  ];
   const baseUrl = testDatabaseUrl();
   const schema = `quizcity_e2e_${randomBytes(8).toString("hex")}`;
   if (!E2E_SCHEMA_PATTERN.test(schema)) throw new Error("refusing unsafe E2E schema name");
@@ -108,7 +113,7 @@ export async function startStack() {
           permission: {
             functionCall: {
               receiverId: contractId,
-              methodNames: ["credit_reward", "pay_job"],
+              methodNames: payoutMethods,
               allowance: yocto(5),
             },
           },
@@ -137,9 +142,10 @@ export async function startStack() {
       throw new Error("E2E server operator key must target the deployed contract");
     }
     if (
-      permission.method_names.length !== 2 ||
+      permission.method_names.length !== payoutMethods.length ||
       !permission.method_names.includes("credit_reward") ||
-      !permission.method_names.includes("pay_job")
+      !permission.method_names.includes("pay_job") ||
+      payoutMethods.some((method) => !permission.method_names.includes(method))
     ) {
       throw new Error("E2E server operator key method allowlist is not credit_reward,pay_job");
     }
@@ -171,8 +177,8 @@ export async function startStack() {
     await callTx(operator, contractId, "create_property", {
       kind: "plot",
       district: "knowledge",
-      x: 1,
-      y: 1,
+      x: options.city ? 4 : 1,
+      y: options.city ? 7 : 1,
       owner_wallet: "gov:council",
       price: "300",
     });
@@ -180,6 +186,9 @@ export async function startStack() {
     const databaseUrl = databaseUrlWithSchema(baseUrl, schema);
     Object.assign(process.env, {
       APP_ENV: "test",
+      AUTO_TESTNET_WALLETS: options.managed ? "1" : "0",
+      TESTNET_WALLET_ENCRYPTION_KEY: options.managed ? randomBytes(32).toString("base64") : "",
+      TESTNET_WALLET_ACCOUNT_SUFFIX: options.managed ? root.accountId : "testnet",
       DEMO_MODE: "0",
       DATABASE_URL: databaseUrl,
       PGSSL: "disable",
@@ -202,6 +211,9 @@ export async function startStack() {
     closeApplicationDb = closeDb;
     const { buildApp } = await import("../../src/app.js");
     const cfg = makeTestConfig({
+      autoTestnetWallets: !!options.managed,
+      testnetWalletEncryptionKey: options.managed ? process.env.TESTNET_WALLET_ENCRYPTION_KEY! : null,
+      testnetWalletAccountSuffix: options.managed ? root.accountId : "testnet",
       databaseUrl,
       rpcUrl: worker.provider.connection.url,
       contractId,
@@ -212,7 +224,20 @@ export async function startStack() {
       chainSourceRequired: false,
       npcTickMs: 600_000,
     });
-    app = await buildApp(cfg);
+    const { createManagedWalletChain } = await import("../../src/managed-wallet-chain.js");
+    const managedChain = options.managed ? createManagedWalletChain(cfg) : undefined;
+    if (managedChain)
+      managedChain.createAccount = async (accountId, publicKey) => {
+        const result = await root
+          .batch(accountId)
+          .createAccount()
+          .transfer(yocto(2))
+          .addKey(publicKey)
+          .transact();
+        if (!result.succeeded) throw Error("Sandbox sponsor could not create the account");
+        await worker.provider.fastForward(5);
+      };
+    app = await buildApp(cfg, { managedWalletChain: managedChain });
     await app.listen({ host: "127.0.0.1", port: 0 });
     const address = app.server.address();
     if (!address || typeof address === "string") throw new Error("server did not bind a TCP port");
@@ -262,6 +287,8 @@ export async function startStack() {
 
     return {
       worker,
+      cfg,
+      managedChain,
       contractId,
       contract,
       operator,

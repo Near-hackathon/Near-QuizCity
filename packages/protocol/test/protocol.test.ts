@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Value } from "@sinclair/typebox/value";
 import {
+  isBrowserAccount,
   AccountId,
   ConfigResponse,
   EconomyResponse,
@@ -139,4 +140,10 @@ test("event handling is exhaustive over the protocol union", () => {
     }),
     "25",
   );
+});
+
+test("browser identity namespace excludes normal wallet names with a guest prefix", () => {
+  assert.equal(isBrowserAccount("guest-00000000-0000-4000-8000-000000000001"), true);
+  assert.equal(isBrowserAccount("guest-alice.testnet"), false);
+  assert.equal(isBrowserAccount("guest-alice"), false);
 });

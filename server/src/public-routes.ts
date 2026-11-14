@@ -8,6 +8,7 @@ import { PROTOCOL_VERSION } from "@quiz-city/protocol";
 export function registerPublicRoutes(app: FastifyInstance, cfg: AppConfig): void {
   app.get("/config", { schema: { response: { 200: ConfigResponse, ...ErrorResponses } } }, async () => ({
     demoMode: cfg.demoMode,
+    autoTestnetWallets: cfg.autoTestnetWallets,
     networkId: cfg.networkId,
     contractId: cfg.contractId,
     protocolVersion: PROTOCOL_VERSION,

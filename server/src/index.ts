@@ -1,3 +1,8 @@
+import { startQuizMatchWorker } from "./quiz-match-worker.js";
+import { startWalletProvisioning } from "./wallet-provisioning.js";
+import { createManagedWalletChain } from "./managed-wallet-chain.js";
+import { startCityReconciler } from "./city-reconciler.js";
+import { startNpcShopping } from "./npc-shopping.js";
 import { buildApp } from "./app.js";
 import { redactedSummary } from "./config.js";
 import { closeDb, sql } from "./db.js";
@@ -22,6 +27,13 @@ const stops: Array<() => void | Promise<void>> = [];
 try {
   app.log.info({ config: redactedSummary(config) }, "configuration loaded");
   await app.listen({ port: config.port, host: config.host });
+
+  if (config.autoTestnetWallets) {
+    const wallets = startWalletProvisioning(sql, config, createManagedWalletChain(config), () =>
+      app.log.warn({ code: "WALLET_SETUP_PENDING" }, "wallet setup will retry"),
+    );
+    stops.push(() => wallets.stop());
+  }
 
   const runSync = async () => {
     try {
@@ -57,6 +69,16 @@ try {
     onError: (error) => app.log.warn({ err: error }, "npc simulation tick failed"),
   });
   stops.push(() => npcSimulation.stop());
+  const shopping = startNpcShopping(sql, (error) => app.log.warn({ err: error }, "NPC shopping tick failed"));
+  stops.push(() => shopping.stop());
+  const matches = startQuizMatchWorker(sql, config.operatorAccount, () =>
+    app.log.warn({ code: "MATCH_RECONCILIATION_PENDING" }, "Quiz match settlement pending"),
+  );
+  stops.push(() => matches.stop());
+  const cityReconciler = startCityReconciler(sql, (error) =>
+    app.log.warn({ err: error }, "City reconciliation pending"),
+  );
+  stops.push(() => cityReconciler.stop());
 
   const chainRuntime = { networkId: config.networkId, contractId: config.contractId };
   if (config.chainEventSourceUrl) {

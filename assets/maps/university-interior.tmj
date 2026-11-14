@@ -1,0 +1,374 @@
+{
+  "sceneId": "university-interior",
+  "assetVersion": "4",
+  "orientation": "isometric",
+  "renderorder": "right-down",
+  "tilewidth": 32,
+  "tileheight": 16,
+  "width": 28,
+  "height": 20,
+  "infinite": false,
+  "version": "1.10",
+  "layers": [
+    {
+      "id": 1,
+      "name": "ground",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 2,
+      "name": "roads",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 3,
+      "name": "pavement",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 4,
+      "name": "lower_props",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 5,
+      "name": "buildings",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 6,
+      "name": "upper_occlusion",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 7,
+      "name": "collision",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 6001,
+          "x": 0,
+          "y": 0,
+          "width": 28,
+          "height": 1
+        },
+        {
+          "id": 6002,
+          "x": 0,
+          "y": 19,
+          "width": 28,
+          "height": 1
+        },
+        {
+          "id": 6003,
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 20
+        },
+        {
+          "id": 6004,
+          "x": 27,
+          "y": 0,
+          "width": 1,
+          "height": 20
+        },
+        {
+          "id": 6005,
+          "x": 4,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6006,
+          "x": 24,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6007,
+          "x": 6,
+          "y": 7,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6008,
+          "x": 7,
+          "y": 8,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6009,
+          "x": 11,
+          "y": 7,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6010,
+          "x": 12,
+          "y": 8,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6011,
+          "x": 17,
+          "y": 7,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6012,
+          "x": 18,
+          "y": 8,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6013,
+          "x": 6,
+          "y": 11,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6014,
+          "x": 7,
+          "y": 12,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6015,
+          "x": 11,
+          "y": 11,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6016,
+          "x": 12,
+          "y": 12,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6017,
+          "x": 17,
+          "y": 11,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6018,
+          "x": 18,
+          "y": 12,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6019,
+          "x": 14,
+          "y": 4,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6020,
+          "x": 24,
+          "y": 5,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6021,
+          "x": 3,
+          "y": 6,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6022,
+          "x": 3,
+          "y": 9,
+          "width": 1,
+          "height": 1
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "navigation",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 9,
+      "name": "interactions",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "serverId": "university-spawn",
+          "id": 8001,
+          "kind": "door",
+          "x": 14,
+          "y": 18,
+          "radius": 2,
+          "targetSceneId": "city-district",
+          "targetSpawnId": "university-door-exterior",
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "university-spawn"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 14
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 18
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "targetSceneId",
+              "type": "string",
+              "value": "city-district"
+            },
+            {
+              "name": "targetSpawnId",
+              "type": "string",
+              "value": "university-door-exterior"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "spawns",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 9001,
+          "kind": "door",
+          "x": 14,
+          "y": 18,
+          "serverId": "university-spawn",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "university-spawn"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            }
+          ]
+        },
+        {
+          "id": 9002,
+          "kind": "player_default",
+          "x": 14,
+          "y": 15,
+          "serverId": "university-default",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "university-default"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "player_default"
+            }
+          ]
+        },
+        {
+          "id": 9003,
+          "kind": "npc_waypoint",
+          "x": 14,
+          "y": 8,
+          "serverId": "research-desk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "research-desk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9004,
+          "kind": "npc_waypoint",
+          "x": 15,
+          "y": 8,
+          "serverId": "abena-university-desk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "abena-university-desk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

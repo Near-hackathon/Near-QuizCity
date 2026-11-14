@@ -81,12 +81,15 @@ describe("api client", () => {
   it.each([
     [401, "UNAUTHORIZED"],
     [403, "FORBIDDEN"],
+    [404, "NOT_FOUND"],
     [409, "CONFLICT"],
     [429, "RATE_LIMITED"],
     [500, "INTERNAL_ERROR"],
   ])("surfaces the stable error message for HTTP %i", async (status, code) => {
     fetchMock.mockResolvedValue(jsonResponse({ error: { code, message: `stable ${code} message` } }, status));
-    await expect(api.jobs()).rejects.toThrow(`stable ${code} message`);
+    const result = api.jobs();
+    await expect(result).rejects.toThrow(`stable ${code} message`);
+    await expect(result).rejects.toMatchObject({ status, code });
   });
 
   it("rejects malformed responses and network failures", async () => {

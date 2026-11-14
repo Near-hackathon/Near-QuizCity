@@ -135,6 +135,7 @@ test("successful responses satisfy their schemas", async () => {
   const response = await app.inject({ method: "GET", url: "/v1/config" });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(Object.keys(response.json()).sort(), [
+    "autoTestnetWallets",
     "contractId",
     "demoMode",
     "networkId",

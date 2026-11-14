@@ -112,6 +112,42 @@ test("bootstrap uses default spawn, rejects unavailable scenes, and caps collect
   });
 });
 
+test("exterior geometry upgrade preserves sessions and only relocates trapped players", async () => {
+  await withTestSchema(async ({ sql }) => {
+    const index = migrations.findIndex(
+      (migration) => migration.filename === "0023_exterior_collision_version.sql",
+    );
+    await runMigrations(postgresMigrationStore(sql), migrations.slice(0, index));
+    await seedWorld(sql);
+    await sql`
+      insert into player_presence (session_id, player_account, scene_id, x, y, facing)
+      values ('trapped', 'alice.testnet', 'city-district', 18, 7, 'north'),
+             ('safe', 'bob.testnet', 'city-district', 32, 26, 'south')
+    `;
+    await runMigrations(postgresMigrationStore(sql), migrations.slice(0, index + 1));
+    const rows =
+      await sql`select session_id, x, y, path, scene_version::text from player_presence order by session_id`;
+    assert.deepEqual(
+      rows.map((row) => ({ ...row })),
+      [
+        { session_id: "safe", x: 32, y: 26, path: [], scene_version: "2" },
+        { session_id: "trapped", x: 32, y: 24, path: [], scene_version: "2" },
+      ],
+    );
+    await sql`
+      insert into properties (id, district, x, y, owner_wallet, property_type, price, for_sale)
+      values (3, 'knowledge', 4, 7, 'private:plot-owner', 'commercial', 100, true)
+    `;
+    await runMigrations(postgresMigrationStore(sql), migrations);
+    const bootstrap = await buildWorldBootstrap(sql, "alice.testnet", "city-district");
+    assert.deepEqual(
+      bootstrap.properties.find((property) => property.id === "3"),
+      { id: "3", forSale: true, price: "100", x: 4, y: 7, condition: 100, utilitiesActive: true },
+    );
+    assert.equal(bootstrap.scene.assetVersion, "6");
+  });
+});
+
 test("bootstrap restores only the authenticated session presence", async () => {
   await withTestSchema(async ({ sql }) => {
     await migrate(sql);
@@ -135,6 +171,41 @@ test("bootstrap restores only the authenticated session presence", async () => {
     });
     assert.equal(newSession.player.x, 32);
     assert.equal(newSession.player.y, 24);
+  });
+});
+
+test("prop migration relocates trapped positions and preserves safe sessions", async () => {
+  await withTestSchema(async ({ sql }) => {
+    const index = migrations.findIndex((migration) => migration.filename === "0024_prop_collision.sql");
+    await runMigrations(postgresMigrationStore(sql), migrations.slice(0, index));
+    await seedWorld(sql);
+    await sql`insert into player_presence (session_id, player_account, scene_id, x, y, facing)
+      values ('bench', 'alice.testnet', 'city-district', 29, 35, 'south'),
+             ('safe', 'bob.testnet', 'city-district', 32, 24, 'south'),
+             ('chair', 'carol.testnet', 'library-interior', 20, 3, 'south')`;
+    await runMigrations(
+      postgresMigrationStore(sql),
+      migrations.filter((m) => m.filename < "0027"),
+    );
+    const rows =
+      await sql`select session_id, x, y, scene_version::text as version from player_presence order by session_id`;
+    assert.deepEqual(
+      [...rows],
+      [
+        { session_id: "bench", x: 32, y: 24, version: "3" },
+        { session_id: "chair", x: 12, y: 12, version: "3" },
+        { session_id: "safe", x: 32, y: 24, version: "3" },
+      ],
+    );
+    const repeated = await runMigrations(
+      postgresMigrationStore(sql),
+      migrations.filter((m) => m.filename < "0027"),
+    );
+    assert.equal(repeated.applied.length, 0);
+    await runMigrations(postgresMigrationStore(sql), migrations);
+    const bootstrap = await buildWorldBootstrap(sql, "alice.testnet", "library-interior");
+    assert.ok(bootstrap.npcDirectory?.some((npc) => npc.npcId === "professor-kofi"));
+    assert.ok(bootstrap.interactionZones.some((zone) => zone.id === "professor-kofi" && zone.kind === "npc"));
   });
 });
 
@@ -197,7 +268,10 @@ test("HTTP bootstrap route requires a live authenticated session", async () => {
       },
       { client: sql, deps: { now: () => fixedNow } },
     );
-    await app.register(async (v1) => registerDataRoutes(v1, { db: sql }), { prefix: "/v1" });
+    await app.register(
+      async (v1) => registerDataRoutes(v1, { db: sql, movement: { stepMs: 500, tilesPerTick: 1 } }),
+      { prefix: "/v1" },
+    );
     await app.ready();
     try {
       const anonymous = await app.inject({ method: "GET", url: "/v1/world/bootstrap?sceneId=city-district" });
@@ -215,6 +289,7 @@ test("HTTP bootstrap route requires a live authenticated session", async () => {
       });
       assert.equal(authenticated.statusCode, 200, authenticated.body);
       assert.equal(Value.Check(WorldBootstrap, authenticated.json()), true);
+      assert.deepEqual(authenticated.json().movement, { stepMs: 500, tilesPerTick: 1 });
       const invalidScene = await app.inject({
         method: "GET",
         url: "/v1/world/bootstrap?sceneId=INVALID!",

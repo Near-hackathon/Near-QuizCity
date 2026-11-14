@@ -1,0 +1,137 @@
+{
+  "pack": "Gridwright Isometric City People - Free Sample",
+  "version": "1.0",
+  "format": "Gridwright isometric characters",
+  "cell": [
+    32,
+    32
+  ],
+  "anchor": [
+    16,
+    28
+  ],
+  "grid": "made for the 32x16 isometric ground diamond of Gridwright Isometric City (and Isometric Tiles, Interiors, Wasteland); people are about 22 px tall at 1x, the city's storey is 20 px; sizes and points are at 1x",
+  "placement": "the anchor on the centre of the cell (col, row) at height h: x = X0 + 16 (col - row), y = Y0 + 8 (col + row) + 8 - h; draw the frame at (x - anchor x, y - anchor y)",
+  "draw_order": "draw the ground first, then sort people with objects by col + row of the cell under the anchor",
+  "rows": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "row_note": "every sheet has one row per direction in this order: s = towards the viewer, then clockwise; every direction is drawn, none is mirrored",
+  "grid_step": {
+    "s": {
+      "col": 1,
+      "row": 1
+    },
+    "sw": {
+      "col": 0,
+      "row": 1
+    },
+    "w": {
+      "col": -1,
+      "row": 1
+    },
+    "nw": {
+      "col": -1,
+      "row": 0
+    },
+    "n": {
+      "col": -1,
+      "row": -1
+    },
+    "ne": {
+      "col": 0,
+      "row": -1
+    },
+    "e": {
+      "col": 1,
+      "row": -1
+    },
+    "se": {
+      "col": 1,
+      "row": 0
+    }
+  },
+  "shadows": "Effects/<k>x/shadow_small.png (16x16, one flat colour, anchor at the centre): draw it under the anchor at about 35% opacity; no frame has a baked shadow",
+  "animations_note": "idle 4 frames 6 fps, walk 8 frames 10 fps (walk_speed in each Sheets JSON keeps the feet planted), phone 4 frames 4 fps (talking on a phone)",
+  "characters": [
+    {
+      "name": "man_tee",
+      "title": "Man in a T-shirt",
+      "kind": "unit",
+      "side": "pedestrian",
+      "group": "City people",
+      "cell": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        28
+      ],
+      "animations": [
+        {
+          "name": "idle",
+          "frames": 4,
+          "fps": 6,
+          "loop": true
+        },
+        {
+          "name": "walk",
+          "frames": 8,
+          "fps": 10,
+          "loop": true
+        },
+        {
+          "name": "phone",
+          "frames": 4,
+          "fps": 4,
+          "loop": true
+        }
+      ],
+      "data": "Sheets/1x/man_tee/man_tee.json"
+    },
+    {
+      "name": "woman_jeans",
+      "title": "Woman in jeans",
+      "kind": "unit",
+      "side": "pedestrian",
+      "group": "City people",
+      "cell": [
+        32,
+        32
+      ],
+      "anchor": [
+        16,
+        28
+      ],
+      "animations": [
+        {
+          "name": "idle",
+          "frames": 4,
+          "fps": 6,
+          "loop": true
+        },
+        {
+          "name": "walk",
+          "frames": 8,
+          "fps": 10,
+          "loop": true
+        },
+        {
+          "name": "phone",
+          "frames": 4,
+          "fps": 4,
+          "loop": true
+        }
+      ],
+      "data": "Sheets/1x/woman_jeans/woman_jeans.json"
+    }
+  ]
+}

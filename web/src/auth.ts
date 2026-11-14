@@ -2,8 +2,9 @@ import { api, type AuthMe } from "./api";
 import { decodeNonce } from "./nep413";
 import type { MessageSigner } from "./wallet/types";
 
-export async function ensureAuth(accountId: string, signer: MessageSigner): Promise<AuthMe> {
+export async function ensureAuth(accountId: string, signer: MessageSigner, force = false): Promise<AuthMe> {
   try {
+    if (force) throw new Error("Fresh wallet proof requested");
     const me = await api.authMe();
     if (me.accountId === accountId) return me;
   } catch {

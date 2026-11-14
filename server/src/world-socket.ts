@@ -91,6 +91,7 @@ function worldCommandError(error: unknown): { code: string; message: string } {
 }
 
 export function createWorldSocketRuntime(deps: WorldSocketDeps, cfg: AppConfig): WorldSocketRuntime {
+  if (typeof deps.db !== "function") throw new Error("World socket requires a database client");
   const timers = deps.timers ?? defaultTimers;
   const clients = new Set<Client>();
   const streams = new Map<string, Set<Client>>();
@@ -167,6 +168,46 @@ export function createWorldSocketRuntime(deps: WorldSocketDeps, cfg: AppConfig):
     members.add(client);
   };
 
+  const sendBootstrap = async (client: Client, sceneId: string): Promise<boolean> => {
+    const streamId = `scene:${sceneId}`;
+    const bootstrap = await (deps.buildBootstrap ?? buildWorldBootstrap)(deps.db, client.accountId, sceneId, {
+      now: deps.now,
+      sessionId: client.sessionId,
+      movement: { stepMs: cfg.worldTickMs, tilesPerTick: cfg.worldTilesPerTick },
+    });
+    const claimed = await deps.db<{ session_id: string }[]>`
+      insert into player_presence (
+        session_id, player_account, scene_id, x, y, facing, heartbeat_at
+      ) values (
+        ${client.sessionId}, ${client.accountId}, ${sceneId},
+        ${bootstrap.player.x}, ${bootstrap.player.y}, ${bootstrap.player.facing}, ${deps.now()}
+      )
+      on conflict (session_id) do update set
+        heartbeat_at = excluded.heartbeat_at
+      where player_presence.player_account = excluded.player_account
+        and player_presence.scene_id = excluded.scene_id
+      returning session_id
+    `;
+    if (claimed.length !== 1) {
+      send(client, {
+        type: "world.resync_required",
+        reason: "requested scene does not match authoritative presence",
+        sceneId,
+      });
+      return false;
+    }
+    if (!send(client, bootstrap)) return false;
+    join(client, sceneId, streamId, bootstrap.lastSequence);
+    if (!(await deliverClient(client, streamId))) return false;
+    send(client, {
+      type: "world.ready",
+      streamId,
+      sequence: client.lastSent,
+      lastClientSequence: bootstrap.player.lastClientSequence,
+    });
+    return true;
+  };
+
   const touchPresence = async (client: Client): Promise<boolean> => {
     if (!client.sceneId || client.left) return false;
     const rows = await deps.db<{ session_id: string }[]>`
@@ -215,50 +256,24 @@ export function createWorldSocketRuntime(deps: WorldSocketDeps, cfg: AppConfig):
 
   const subscribe = async (client: Client, message: WorldClientMessageType): Promise<void> => {
     if (message.type !== "world.subscribe" || closed || client.left) return;
-    const sceneId = message.sceneId;
+    const [currentPresence] = await deps.db<{ scene_id: string }[]>`
+      select scene_id
+      from player_presence
+      where session_id = ${client.sessionId} and player_account = ${client.accountId}
+      order by heartbeat_at desc
+      limit 1
+    `;
+    const sceneId = currentPresence?.scene_id ?? message.sceneId;
     const streamId = `scene:${sceneId}`;
     unsubscribe(client);
+    if (currentPresence && currentPresence.scene_id !== message.sceneId) {
+      await sendBootstrap(client, sceneId);
+      return;
+    }
     const head = await streamHead(deps.db, streamId);
 
     if (message.lastSequence === null) {
-      const bootstrap = await (deps.buildBootstrap ?? buildWorldBootstrap)(
-        deps.db,
-        client.accountId,
-        sceneId,
-        {
-          now: deps.now,
-          sessionId: client.sessionId,
-        },
-      );
-      const claimed = await deps.db<{ session_id: string }[]>`
-        insert into player_presence (
-          session_id, player_account, scene_id, x, y, facing, heartbeat_at
-        ) values (
-          ${client.sessionId}, ${client.accountId}, ${sceneId},
-          ${bootstrap.player.x}, ${bootstrap.player.y}, ${bootstrap.player.facing}, ${deps.now()}
-        )
-        on conflict (session_id) do update set
-          heartbeat_at = excluded.heartbeat_at
-        where player_presence.player_account = excluded.player_account
-          and player_presence.scene_id = excluded.scene_id
-        returning session_id
-      `;
-      if (claimed.length !== 1) {
-        send(client, {
-          type: "world.resync_required",
-          reason: "requested scene does not match authoritative presence",
-        });
-        return;
-      }
-      if (!send(client, bootstrap)) return;
-      join(client, sceneId, streamId, bootstrap.lastSequence);
-      if (!(await deliverClient(client, streamId))) return;
-      send(client, {
-        type: "world.ready",
-        streamId,
-        sequence: client.lastSent,
-        lastClientSequence: bootstrap.player.lastClientSequence,
-      });
+      await sendBootstrap(client, sceneId);
       return;
     }
 
@@ -607,9 +622,18 @@ export function createWorldSocketRuntime(deps: WorldSocketDeps, cfg: AppConfig):
         });
         socket.on("close", () => leave(client, "disconnect"));
         socket.on("message", (data) => {
-          void serialize(client, () => handle(client, data.toString())).catch((error) =>
-            deps.logger.warn({ err: error }, "world message failed"),
-          );
+          void serialize(client, () => handle(client, data.toString())).catch((error) => {
+            deps.logger.warn({ err: error }, "world message failed");
+            send(client, {
+              type: "world.error",
+              code: "WORLD_UNAVAILABLE",
+              message: "The city is temporarily unavailable. Reconnecting.",
+            });
+            // A failed bootstrap must release the socket so the client can retry,
+            // rather than remaining indefinitely in its initial connecting state.
+            client.socket.close(1011, "world request failed");
+            leave(client, "world request failed");
+          });
         });
       });
     },
@@ -641,10 +665,10 @@ export async function registerWorldSocket(
 ): Promise<WorldSocketRuntime> {
   const runtime = createWorldSocketRuntime(
     {
+      ...overrides,
       db: overrides.db ?? globalSql,
       now: overrides.now ?? (() => new Date()),
       logger: app.log,
-      ...overrides,
     },
     cfg,
   );

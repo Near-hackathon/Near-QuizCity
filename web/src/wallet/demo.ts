@@ -16,6 +16,10 @@ export async function registerDemoKey(
   publicKey: string,
   secretKey: string,
 ): Promise<void> {
+  // The legacy NEAR transaction serializer references the global Buffer symbol.
+  // Install it before loading the development-only SDK, including after reload.
+  const { Buffer } = await import("buffer");
+  globalThis.Buffer ??= Buffer;
   const [{ KeyPair }, { nep413Digest }] = await Promise.all([import("near-api-js"), import("../nep413")]);
   const key = KeyPair.fromString(secretKey as Parameters<typeof KeyPair.fromString>[0]);
   keys.set(accountId, {

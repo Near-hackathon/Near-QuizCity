@@ -20,6 +20,7 @@ export const JobResponse = Type.Object(
     id: Type.String(),
     employer_wallet: Type.String(),
     employee_account: Type.Union([Type.String(), Type.Null()]),
+    has_research_task: Type.Optional(Type.Boolean()),
     title: Type.String(),
     description: Type.String(),
     payment: QcAmount,

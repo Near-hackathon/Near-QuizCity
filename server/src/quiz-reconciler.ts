@@ -24,29 +24,31 @@ export type QuizRewardDeps = {
   now: () => Date;
 };
 
-function expectationFor(attempt: JobRow, operatorAccount: string) {
+export function quizPaymentExpectation(attempt: JobRow, operatorAccount: string) {
   const wallet = `player:${String(attempt.player_account)}`;
   const amount = String(attempt.reward_amount);
-  return {
-    wallet,
-    amount,
-    reference: `quiz:${String(attempt.id)}`,
-    expectation: {
-      signerId: operatorAccount,
-      method: "credit_reward",
-      args: { wallet, amount, reference: `quiz:${String(attempt.id)}` },
-      events: [
-        {
-          name: "reward_issued",
-          entityId: wallet,
-          walletFrom: null,
-          walletTo: wallet,
-          amount,
-          reference: `quiz:${String(attempt.id)}`,
-        },
-      ],
-    },
+  const escrow = typeof attempt.funding_escrow_id === "string" ? attempt.funding_escrow_id : null;
+  const reference = escrow ? `settle:${escrow}:quiz:${String(attempt.id)}` : `quiz:${String(attempt.id)}`;
+  const eventName = escrow ? "escrow_released" : "reward_issued";
+  const entityId = escrow ? `escrow:${escrow}` : wallet;
+  const expectation: ExpectedCall = {
+    signerId: operatorAccount,
+    method: escrow ? "settle_escrow" : "credit_reward",
+    args: escrow
+      ? { id: escrow, recipient_wallet: wallet, amount, refund: false, reference }
+      : { wallet, amount, reference },
+    events: [
+      {
+        name: eventName,
+        entityId,
+        walletFrom: escrow ? `gov:escrow.${escrow}` : null,
+        walletTo: wallet,
+        amount,
+        reference,
+      },
+    ],
   };
+  return { wallet, amount, reference, eventName, entityId, escrow, expectation };
 }
 
 export async function finalizeQuizReward(
@@ -55,15 +57,19 @@ export async function finalizeQuizReward(
   events: ValidatedEvent[],
   deps: QuizRewardDeps,
 ): Promise<JobRow> {
-  const { wallet, amount, reference } = expectationFor(attempt, deps.operatorAccount);
+  const { wallet, amount, reference, eventName, entityId, escrow } = quizPaymentExpectation(
+    attempt,
+    deps.operatorAccount,
+  );
   const proof = requireExpectedEvent(events, {
-    name: "reward_issued",
-    entityId: wallet,
+    name: eventName,
+    entityId,
     walletTo: wallet,
     amount,
     reference,
   });
   const balance = await deps.readChainBalance(wallet);
+  const reservedBalance = escrow ? await deps.readChainBalance(`gov:escrow.${escrow}`) : null;
   const finalized = await deps.db.begin(async (transaction) => {
     await consumeTransaction(transaction, {
       txHash,
@@ -75,6 +81,8 @@ export async function finalizeQuizReward(
       eventIndex: proof.eventIndex as number,
     });
     await deps.setMirroredBalance(transaction, wallet, balance);
+    if (escrow && reservedBalance !== null)
+      await deps.setMirroredBalance(transaction, `gov:escrow.${escrow}`, reservedBalance);
     await deps.insertLedgerEntries(transaction, ledgerEntriesFromEvents(events));
     await projectQuizReward(transaction, {
       attemptId: String(attempt.id),
@@ -95,12 +103,12 @@ export async function reconcileQuizReward(
   deps: QuizRewardDeps,
 ): Promise<{ reconciled: boolean; reason?: string }> {
   if (attempt.reward_state === "paid") return { reconciled: true };
-  const { reference, expectation } = expectationFor(attempt, deps.operatorAccount);
+  const { reference, expectation } = quizPaymentExpectation(attempt, deps.operatorAccount);
   let txHash = typeof attempt.reward_tx === "string" ? attempt.reward_tx : null;
   if (!txHash) {
     const [event] = await deps.db<{ tx_hash: string | null }[]>`
       select tx_hash from transactions
-      where reference = ${reference} and event_name = 'reward_issued'
+      where reference = ${reference} and event_name in ('reward_issued','escrow_released')
       order by seq desc limit 1
     `;
     txHash = event?.tx_hash ?? null;

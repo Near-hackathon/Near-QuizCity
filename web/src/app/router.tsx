@@ -9,10 +9,16 @@ export const routes: RouteObject[] = [
     errorElement: <RouteError />,
     HydrateFallback: () => <p className="muted">Loading city...</p>,
     children: [
-      { index: true, lazy: () => import("../routes/city") },
+      { index: true, lazy: () => import("../routes/landing") },
+      {
+        lazy: () => import("../game/layout"),
+        children: [
+          { path: "play", lazy: () => import("../routes/city") },
+          { path: "interior/:sceneId", lazy: () => import("../routes/interior") },
+        ],
+      },
       { path: "manage", lazy: () => import("../routes/manage") },
       { path: "admin", lazy: () => import("../routes/admin") },
-      { path: "interior/:sceneId", lazy: () => import("../routes/interior") },
       { path: "*", lazy: () => import("../routes/not-found") },
     ],
   },

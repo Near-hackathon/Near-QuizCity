@@ -6,6 +6,7 @@ export type WalletAccount = {
 };
 
 export type WalletSession = {
+  profileId?: string;
   accountId: string;
   publicKey?: string;
   networkId: string;

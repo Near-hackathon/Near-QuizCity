@@ -6,7 +6,32 @@
  * ABI checks must compile the module and read `WebAssembly.Module.exports`.
  */
 
-export const PRODUCTION_REQUIRED_EXPORTS = ["credit_reward", "pay_job", "get_properties", "get_businesses"];
+export const PRODUCTION_REQUIRED_EXPORTS = [
+  "credit_reward",
+  "pay_job",
+  "pay_order",
+  "supports_orders",
+  "supports_city_economy",
+  "fund_escrow",
+  "settle_escrow",
+  "npc_purchase",
+  "pay_admission",
+  "list_lease",
+  "pay_rent",
+  "cancel_order",
+  "refund_order",
+  "refund_admission",
+  "list_business",
+  "buy_business",
+  "cancel_charge",
+  "sponsor_quiz",
+  "pay_business_tax",
+  "get_lease",
+  "get_reward_policy",
+  "migrate_economy",
+  "get_properties",
+  "get_businesses",
+];
 
 export const DEMO_ONLY_EXPORTS = ["migrate_reset", "reset_demo"];
 

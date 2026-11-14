@@ -126,13 +126,27 @@ test("local sandbox economic loop is exact, idempotent, and reconciled", async (
   assert.equal(replayBusiness.status, 200, JSON.stringify(replayBusiness.body));
   assert.equal((await eventCounts()).business_created, businessCount);
 
-  // Service payment to the business treasury.
-  const serviceTx = await stack.contractCall(bob, "pay_service", {
-    business_id: 1,
-    amount: "20",
+  // Server-priced item, fixed order and one idempotent on-chain checkout.
+  const stocked = await api(stack, "/v1/businesses/1/catalogue", {
+    body: { sku: "city-guide", name: "City guide", unitPrice: "20", quantity: 3 },
+    cookie: aliceAuth.cookie,
+    csrf: aliceAuth.csrf,
   });
-  const paid = await api(stack, "/v1/businesses/1/pay", {
-    body: { amount: "20", txHash: serviceTx },
+  assert.equal(stocked.status, 200, JSON.stringify(stocked.body));
+  const reserved = await api(stack, "/v1/orders", {
+    body: { itemId: stocked.body.id, quantity: 1 },
+    cookie: bobAuth.cookie,
+    csrf: bobAuth.csrf,
+  });
+  assert.equal(reserved.status, 200, JSON.stringify(reserved.body));
+  const order = reserved.body.order;
+  const serviceTx = await stack.contractCall(bob, "pay_order", {
+    business_id: 1,
+    amount: order.total,
+    reference: order.reference,
+  });
+  const paid = await api(stack, `/v1/orders/${order.id}/confirm`, {
+    body: { txHash: serviceTx },
     cookie: bobAuth.cookie,
     csrf: bobAuth.csrf,
   });
@@ -143,13 +157,19 @@ test("local sandbox economic loop is exact, idempotent, and reconciled", async (
   assert.equal(String(treasury.revenue_total), "20");
   assert.equal(await stack.readContract<string>("get_balance", { wallet: `player:${bob.accountId}` }), "480");
   const serviceCount = (await eventCounts()).service_paid;
-  const replayService = await api(stack, "/v1/businesses/1/pay", {
-    body: { amount: "20", txHash: serviceTx },
+  const replayService = await api(stack, `/v1/orders/${order.id}/confirm`, {
+    body: { txHash: serviceTx },
     cookie: bobAuth.cookie,
     csrf: bobAuth.csrf,
   });
   assert.equal(replayService.status, 200, JSON.stringify(replayService.body));
   assert.equal((await eventCounts()).service_paid, serviceCount);
+  assert.equal((await db`select on_hand from business_items where id=${stocked.body.id}`)[0].on_hand, 2);
+  assert.equal((await db`select count(*)::int as n from stock_movements where order_id=${order.id}`)[0].n, 1);
+  assert.equal(
+    await stack.readContract<boolean>("is_reference_processed", { reference: order.reference }),
+    true,
+  );
   assert.equal(String((await db`select revenue_total from businesses where id = 1`)[0].revenue_total), "20");
 
   // Business transfer.
@@ -181,12 +201,17 @@ test("local sandbox economic loop is exact, idempotent, and reconciled", async (
   assert.equal((await eventCounts()).business_transferred, transferCount);
   assert.equal((await db`select owner_account from businesses where id = 1`)[0].owner_account, bob.accountId);
 
-  // The public withdrawal route remains a later product feature. Phase 4 still
-  // proves the real contract event and production ingestion/projection path.
+  // Owner withdrawal stays in the phone and preserves cumulative gross sales.
   const withdrawalTx = await stack.contractCall(bob, "business_withdraw", {
     business_id: 1,
     amount: "5",
   });
+  const withdrawn = await api(stack, "/v1/businesses/1/withdraw", {
+    body: { amount: "5", txHash: withdrawalTx },
+    cookie: bobAuth.cookie,
+    csrf: bobAuth.csrf,
+  });
+  assert.equal(withdrawn.status, 200, JSON.stringify(withdrawn.body));
   const { verifyExpectedFunctionCall } = await import("../../src/verify.js");
   const { ledgerEntryFromEvent, insertLedgerEntries } = await import("../../src/ledger.js");
   const { applyMirrorEvent } = await import("../../src/chain-ingester.js");
@@ -220,13 +245,13 @@ test("local sandbox economic loop is exact, idempotent, and reconciled", async (
     });
     return { inserted, replayed };
   };
-  assert.deepEqual(await ingestWithdrawal(), { inserted: 1, replayed: 0 });
+  assert.deepEqual(await ingestWithdrawal(), { inserted: 0, replayed: 1 });
   assert.equal(await stack.readContract<string>("get_balance", { wallet: `player:${bob.accountId}` }), "485");
   assert.equal(await stack.readContract<string>("get_balance", { wallet: "biz:1" }), "15");
   const [withdrawnBusiness] = await db`select revenue_total from businesses where id = 1`;
-  assert.equal(String(withdrawnBusiness.revenue_total), "15");
+  assert.equal(String(withdrawnBusiness.revenue_total), "20");
   assert.deepEqual(await ingestWithdrawal(), { inserted: 0, replayed: 1 });
-  assert.equal(String((await db`select revenue_total from businesses where id = 1`)[0].revenue_total), "15");
+  assert.equal(String((await db`select revenue_total from businesses where id = 1`)[0].revenue_total), "20");
 
   // Verified job paid by the server operator key.
   await db`
@@ -235,9 +260,31 @@ test("local sandbox economic loop is exact, idempotent, and reconciled", async (
       reference, payment_reference, payment_attempts
     ) values (
       'job-1', 'npc:professor-kofi', ${alice.accountId}, 'E2E job', 'ship it', '100',
-      'verified', 'job:job-1', 'job:job-1', 0
+      'open', 'job:job-1', 'job:job-1', 0
     )
   `;
+  const { attachResearchTask } = await import("../../src/research-tasks.js");
+  await db.begin((tx) => attachResearchTask(tx, "job-1"));
+  const acceptedJob = await api(stack, "/v1/jobs/job-1/accept", {
+    body: {},
+    cookie: aliceAuth.cookie,
+    csrf: aliceAuth.csrf,
+  });
+  assert.equal(acceptedJob.status, 200);
+  const research = await api(stack, "/v1/jobs/job-1/task", { cookie: aliceAuth.cookie });
+  assert.equal(research.status, 200);
+  assert.ok(research.body.questions.every((q: Record<string, unknown>) => !("correct" in q)));
+  const delivered = await api(stack, "/v1/jobs/job-1/task", {
+    body: {
+      answers: { infrastructure: 0, intents: 1, ownership: 2 },
+      summary:
+        "NEAR provides blockchain applications and cross-chain execution. Private keys must stay private.",
+    },
+    cookie: aliceAuth.cookie,
+    csrf: aliceAuth.csrf,
+  });
+  assert.equal(delivered.status, 200, JSON.stringify(delivered.body));
+  assert.equal(delivered.body.job.status, "verified");
   const jobResult = await api(stack, "/v1/jobs/job-1/complete", {
     body: {},
     cookie: aliceAuth.cookie,

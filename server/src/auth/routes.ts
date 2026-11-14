@@ -1,3 +1,4 @@
+import type { Sql } from "postgres";
 import type { FastifyInstance } from "fastify";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
@@ -16,12 +17,13 @@ import { issueNonce, logoutSession, SESSION_TTL_MS, verifyLogin, type AuthRuntim
 
 const LogoutResponse = Type.Object({ ok: Type.Boolean() }, { additionalProperties: false });
 
-async function db() {
+async function defaultDb() {
   const module = await import("../db.js");
   return module.sql;
 }
 
-export function registerAuthRoutes(app: FastifyInstance, cfg: AppConfig): void {
+export function registerAuthRoutes(app: FastifyInstance, cfg: AppConfig, injected?: Sql): void {
+  const db = async () => injected ?? (await defaultDb());
   const runtime: AuthRuntime = {
     networkId: cfg.networkId,
     contractId: cfg.contractId,

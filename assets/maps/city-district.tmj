@@ -1,0 +1,1122 @@
+{
+  "sceneId": "city-district",
+  "assetVersion": "6",
+  "orientation": "isometric",
+  "renderorder": "right-down",
+  "tilewidth": 32,
+  "tileheight": 16,
+  "width": 64,
+  "height": 48,
+  "infinite": false,
+  "version": "1.10",
+  "layers": [
+    {
+      "id": 1,
+      "name": "ground",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 2,
+      "name": "roads",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 3,
+      "name": "pavement",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 4,
+      "name": "lower_props",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 5,
+      "name": "buildings",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 6,
+      "name": "upper_occlusion",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 7,
+      "name": "collision",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 6001,
+          "x": 0,
+          "y": 0,
+          "width": 64,
+          "height": 2
+        },
+        {
+          "id": 6002,
+          "x": 0,
+          "y": 46,
+          "width": 64,
+          "height": 2
+        },
+        {
+          "id": 6003,
+          "x": 0,
+          "y": 0,
+          "width": 2,
+          "height": 48
+        },
+        {
+          "id": 6004,
+          "x": 62,
+          "y": 0,
+          "width": 2,
+          "height": 48
+        },
+        {
+          "id": 6005,
+          "x": 28,
+          "y": 18,
+          "width": 8,
+          "height": 6
+        },
+        {
+          "id": 6006,
+          "x": 17,
+          "y": 6,
+          "width": 7,
+          "height": 4
+        },
+        {
+          "id": 6007,
+          "x": 37,
+          "y": 8,
+          "width": 7,
+          "height": 4
+        },
+        {
+          "id": 6008,
+          "x": 47,
+          "y": 6,
+          "width": 7,
+          "height": 4
+        },
+        {
+          "id": 6009,
+          "x": 7,
+          "y": 32,
+          "width": 7,
+          "height": 4
+        },
+        {
+          "id": 6010,
+          "x": 42,
+          "y": 31,
+          "width": 7,
+          "height": 4
+        },
+        {
+          "id": 6011,
+          "x": 4,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6012,
+          "x": 4,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6013,
+          "x": 9,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6014,
+          "x": 9,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6015,
+          "x": 14,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6016,
+          "x": 14,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6017,
+          "x": 19,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6018,
+          "x": 19,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6019,
+          "x": 24,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6020,
+          "x": 24,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6021,
+          "x": 29,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6022,
+          "x": 29,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6023,
+          "x": 34,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6024,
+          "x": 34,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6025,
+          "x": 39,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6026,
+          "x": 39,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6027,
+          "x": 44,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6028,
+          "x": 44,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6029,
+          "x": 49,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6030,
+          "x": 49,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6031,
+          "x": 54,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6032,
+          "x": 54,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6033,
+          "x": 59,
+          "y": 29,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6034,
+          "x": 59,
+          "y": 43,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6035,
+          "x": 25,
+          "y": 32,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6036,
+          "x": 34,
+          "y": 37,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6037,
+          "x": 37,
+          "y": 33,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6038,
+          "x": 24,
+          "y": 39,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6039,
+          "x": 29,
+          "y": 35,
+          "width": 1,
+          "height": 1
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "navigation",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 9,
+      "name": "interactions",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "serverId": "building-library",
+          "id": 8001,
+          "kind": "building",
+          "x": 20,
+          "y": 10,
+          "radius": 2,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "building"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "building-library"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 20
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 10
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "serverId": "building-quiz-centre",
+          "id": 8002,
+          "kind": "building",
+          "x": 40,
+          "y": 12,
+          "radius": 2,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "building"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "building-quiz-centre"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 40
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 12
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "serverId": "library-door-exterior",
+          "id": 8003,
+          "kind": "door",
+          "x": 20,
+          "y": 10,
+          "radius": 2,
+          "targetSceneId": "library-interior",
+          "targetSpawnId": "library-spawn",
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "library-door-exterior"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 20
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 10
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "targetSceneId",
+              "type": "string",
+              "value": "library-interior"
+            },
+            {
+              "name": "targetSpawnId",
+              "type": "string",
+              "value": "library-spawn"
+            }
+          ]
+        },
+        {
+          "serverId": "quiz-door-exterior",
+          "id": 8004,
+          "kind": "door",
+          "x": 40,
+          "y": 12,
+          "radius": 2,
+          "targetSceneId": "quiz-centre-interior",
+          "targetSpawnId": "quiz-spawn",
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "quiz-door-exterior"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 40
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 12
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "targetSceneId",
+              "type": "string",
+              "value": "quiz-centre-interior"
+            },
+            {
+              "name": "targetSpawnId",
+              "type": "string",
+              "value": "quiz-spawn"
+            }
+          ]
+        },
+        {
+          "serverId": "building-apartment",
+          "id": 8005,
+          "kind": "building",
+          "x": 10,
+          "y": 36,
+          "radius": 2,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "building"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "building-apartment"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 10
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 36
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "serverId": "building-university",
+          "id": 8006,
+          "kind": "building",
+          "x": 50,
+          "y": 10,
+          "radius": 2,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "building"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "building-university"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 50
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 10
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "serverId": "building-cafe",
+          "id": 8007,
+          "kind": "building",
+          "x": 45,
+          "y": 35,
+          "radius": 2,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "building"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "building-cafe"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 45
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 35
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "serverId": "apartment-door-exterior",
+          "id": 8008,
+          "kind": "door",
+          "x": 10,
+          "y": 36,
+          "radius": 2,
+          "targetSceneId": "apartment-interior",
+          "targetSpawnId": "apartment-spawn",
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "apartment-door-exterior"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 10
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 36
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "targetSceneId",
+              "type": "string",
+              "value": "apartment-interior"
+            },
+            {
+              "name": "targetSpawnId",
+              "type": "string",
+              "value": "apartment-spawn"
+            }
+          ]
+        },
+        {
+          "serverId": "university-door-exterior",
+          "id": 8009,
+          "kind": "door",
+          "x": 50,
+          "y": 10,
+          "radius": 2,
+          "targetSceneId": "university-interior",
+          "targetSpawnId": "university-spawn",
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "university-door-exterior"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 50
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 10
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "targetSceneId",
+              "type": "string",
+              "value": "university-interior"
+            },
+            {
+              "name": "targetSpawnId",
+              "type": "string",
+              "value": "university-spawn"
+            }
+          ]
+        },
+        {
+          "serverId": "cafe-door-exterior",
+          "id": 8010,
+          "kind": "door",
+          "x": 45,
+          "y": 35,
+          "radius": 2,
+          "targetSceneId": "cafe-interior",
+          "targetSpawnId": "cafe-spawn",
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "cafe-door-exterior"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 45
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 35
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "targetSceneId",
+              "type": "string",
+              "value": "cafe-interior"
+            },
+            {
+              "name": "targetSpawnId",
+              "type": "string",
+              "value": "cafe-spawn"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "spawns",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 9001,
+          "kind": "player_default",
+          "x": 32,
+          "y": 24,
+          "serverId": "city-spawn",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "city-spawn"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "player_default"
+            }
+          ]
+        },
+        {
+          "id": 9002,
+          "kind": "door",
+          "x": 20,
+          "y": 10,
+          "serverId": "library-door-exterior",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "library-door-exterior"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            }
+          ]
+        },
+        {
+          "id": 9003,
+          "kind": "door",
+          "x": 40,
+          "y": 12,
+          "serverId": "quiz-door-exterior",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "quiz-door-exterior"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            }
+          ]
+        },
+        {
+          "id": 9004,
+          "kind": "door",
+          "x": 10,
+          "y": 36,
+          "serverId": "apartment-door-exterior",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "apartment-door-exterior"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            }
+          ]
+        },
+        {
+          "id": 9005,
+          "kind": "door",
+          "x": 50,
+          "y": 10,
+          "serverId": "university-door-exterior",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "university-door-exterior"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            }
+          ]
+        },
+        {
+          "id": 9006,
+          "kind": "door",
+          "x": 45,
+          "y": 35,
+          "serverId": "cafe-door-exterior",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "cafe-door-exterior"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            }
+          ]
+        },
+        {
+          "id": 9007,
+          "kind": "npc_waypoint",
+          "x": 30,
+          "y": 35,
+          "serverId": "park-waypoint",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "park-waypoint"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9008,
+          "kind": "npc_waypoint",
+          "x": 5,
+          "y": 8,
+          "serverId": "market-queue",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "market-queue"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9009,
+          "kind": "npc_waypoint",
+          "x": 23,
+          "y": 34,
+          "serverId": "ama-park",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "ama-park"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9010,
+          "kind": "npc_waypoint",
+          "x": 21,
+          "y": 38,
+          "serverId": "ama-walk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "ama-walk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9011,
+          "kind": "npc_waypoint",
+          "x": 28,
+          "y": 34,
+          "serverId": "kojo-park",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "kojo-park"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9012,
+          "kind": "npc_waypoint",
+          "x": 26,
+          "y": 40,
+          "serverId": "kojo-walk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "kojo-walk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9013,
+          "kind": "npc_waypoint",
+          "x": 32,
+          "y": 40,
+          "serverId": "yaw-walk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "yaw-walk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9014,
+          "kind": "npc_waypoint",
+          "x": 40,
+          "y": 38,
+          "serverId": "esi-walk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "esi-walk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9015,
+          "kind": "npc_waypoint",
+          "x": 38,
+          "y": 40,
+          "serverId": "abena-walk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "abena-walk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9016,
+          "kind": "npc_waypoint",
+          "x": 34,
+          "y": 35,
+          "serverId": "abena-park",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "abena-park"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9017,
+          "kind": "npc_waypoint",
+          "x": 30,
+          "y": 36,
+          "serverId": "yaw-park",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "yaw-park"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9018,
+          "kind": "npc_waypoint",
+          "x": 35,
+          "y": 34,
+          "serverId": "esi-park",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "esi-park"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

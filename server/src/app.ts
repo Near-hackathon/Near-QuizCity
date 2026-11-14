@@ -8,6 +8,9 @@ import type { Sql } from "postgres";
 import type { AppConfig } from "./config.js";
 import type { WorldSocketDeps } from "./world-socket.js";
 import { registerAuthPlugin } from "./auth/plugin.js";
+import { registerManagedWalletRoutes } from "./managed-wallet-routes.js";
+import type { ManagedWalletChain } from "./managed-wallet-chain.js";
+import { registerProfileRoutes } from "./profile-routes.js";
 import { registerAuthRoutes } from "./auth/routes.js";
 import { registerErrorHandler } from "./errors.js";
 import { ajvOptions, serializerOptions } from "./fastify-options.js";
@@ -25,6 +28,7 @@ export type BuildAppOptions = {
   readiness?: Partial<ReadinessDeps>;
   /** One app-scoped database dependency for auth, data routes, and world runtime tests. */
   database?: Sql;
+  managedWalletChain?: ManagedWalletChain;
   worldSocket?: Partial<Omit<WorldSocketDeps, "db" | "logger">>;
 };
 
@@ -144,7 +148,14 @@ async function configureApp(cfg: AppConfig, options: BuildAppOptions): Promise<F
     },
     { client: options.database },
   );
-  registerAuthRoutes(app, cfg);
+  registerAuthRoutes(app, cfg, options.database);
+  registerProfileRoutes(app, cfg, options.database);
+  registerManagedWalletRoutes(
+    app,
+    cfg,
+    async () => options.database ?? (await import("./db.js")).sql,
+    options.managedWalletChain,
+  );
   const defaults = await defaultReadinessDeps(cfg);
   registerHealthRoutes(app, cfg, { ...defaults, ...options.readiness });
   return app;
@@ -172,7 +183,10 @@ export async function buildApp(cfg: AppConfig, options: BuildAppOptions = {}): P
     async (v1) => {
       registerPublicRoutes(v1, cfg);
       const { registerDataRoutes } = await import("./data-routes.js");
-      registerDataRoutes(v1, { db: options.database });
+      registerDataRoutes(v1, {
+        db: options.database,
+        movement: { stepMs: cfg.worldTickMs, tilesPerTick: cfg.worldTilesPerTick },
+      });
     },
     { prefix: "/v1" },
   );

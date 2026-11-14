@@ -85,6 +85,8 @@ export async function projectJobReward(
     where id = ${input.jobId} and status <> 'paid'
     returning id
   `;
+  await transaction`update funded_jobs set state='paid' where job_id=${input.jobId}`;
+  await transaction`update business_staff set ended_at=coalesce(ended_at,now()) where job_id=${input.jobId}`;
   return { applied: Boolean(updated) || attemptApplied, replay: !updated };
 }
 

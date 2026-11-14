@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "maps": [
+    {
+      "sceneId": "city-district",
+      "path": "city-district.tmj",
+      "sha256": "c296d93d07b811f442b36d78c8d4428132a44c961f7ec767d0ecef3d9bf23ff2"
+    },
+    {
+      "sceneId": "library-interior",
+      "path": "library-interior.tmj",
+      "sha256": "4999452d4f6481a165afd1a06a92d0ab6cbbf2b51b75eb10e08b4ed3d55d83e8"
+    },
+    {
+      "sceneId": "quiz-centre-interior",
+      "path": "quiz-centre-interior.tmj",
+      "sha256": "3c220b062e79974292878cca16442c620730ebbb82d5d23567dbcfc97a683bf5"
+    },
+    {
+      "sceneId": "apartment-interior",
+      "path": "apartment-interior.tmj",
+      "sha256": "ce866adeb7e5374994701ce11c6899ed76698a6ad956c58556c269df89ae1c27"
+    },
+    {
+      "sceneId": "university-interior",
+      "path": "university-interior.tmj",
+      "sha256": "1d8c5a0ac97a65f42242876b2a087b1b925cdd8617920f18ea5a5a03e8e3aa7a"
+    },
+    {
+      "sceneId": "cafe-interior",
+      "path": "cafe-interior.tmj",
+      "sha256": "f84f4145cd04fe1de21abf055796f9b27a869f08a2dc11d5937fc9bd5f3a6c6e"
+    }
+  ]
+}

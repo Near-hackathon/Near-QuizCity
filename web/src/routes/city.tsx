@@ -1,5 +1,3 @@
-import { App } from "../App";
-
 export function Component() {
-  return <App mode="city" />;
+  return <h1 className="visually-hidden">Quiz City city</h1>;
 }

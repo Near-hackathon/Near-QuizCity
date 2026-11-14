@@ -5,6 +5,13 @@ import { testEnv } from "./fixtures.js";
 
 const env = (overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({ ...testEnv, ...overrides });
 
+test("world movement uses a playable default cadence and preserves explicit overrides", () => {
+  const defaults = loadConfig(env({ WORLD_TICK_MS: undefined, WORLD_FANOUT_POLL_MS: undefined }));
+  assert.equal(defaults.worldTickMs, 250);
+  assert.equal(defaults.worldFanoutPollMs, 100);
+  assert.equal(loadConfig(env({ WORLD_TICK_MS: "500" })).worldTickMs, 500);
+});
+
 test("demo mode is default-deny when DEMO_MODE is absent", () => {
   const { DEMO_MODE: _omitted, ...rest } = env();
   assert.equal(loadConfig(rest).demoMode, false);

@@ -11,7 +11,7 @@ import { registerErrorHandler } from "../src/errors.js";
 import { loadMigrations, postgresMigrationStore, runMigrations } from "../src/migrations.js";
 import { buildWorldBootstrap } from "../src/world-bootstrap.js";
 import { appendWorldEvent } from "../src/world-events.js";
-import { createWorldSocketRuntime, type WorldSocketDeps } from "../src/world-socket.js";
+import { createWorldSocketRuntime, registerWorldSocket, type WorldSocketDeps } from "../src/world-socket.js";
 import type { WorkerOptions } from "../src/worker.js";
 import type { WorldFanoutOptions } from "../src/world-fanout.js";
 import { connectTestPool, testDatabaseUrl, withTestSchema } from "./db-test-utils.js";
@@ -19,6 +19,17 @@ import { makeTestConfig } from "./fixtures.js";
 
 const migrations = loadMigrations(fileURLToPath(new URL("../db/migrations", import.meta.url)));
 const origin = "http://localhost:5173";
+
+test("default app registration preserves the database client when an optional override is undefined", async () => {
+  const app = Fastify();
+  try {
+    await registerWorldSocket(app, makeTestConfig(), { db: undefined, now: undefined });
+    await app.ready();
+    assert.equal(app.worldSocket.stats().clients, 0);
+  } finally {
+    await app.close();
+  }
+});
 
 type Message = Record<string, unknown>;
 
@@ -181,6 +192,48 @@ function rejectedUpgrade(socket: WebSocket): Promise<number> {
     });
   });
 }
+
+test("failed bootstrap returns a safe error and closes the socket for reconnect", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await runMigrations(postgresMigrationStore(sql), migrations);
+    await seedWorld(sql);
+    const token = "bootstrap-failure-session";
+    await insertSession(sql, token);
+    const server = await startSocketApp(
+      sql,
+      () => new Date("2026-11-13T10:00:00Z"),
+      {},
+      {
+        buildBootstrap: async () => {
+          throw new Error("private database diagnostics");
+        },
+      },
+    );
+    const socket = connect(server.url, token);
+    const received = inbox(socket);
+    try {
+      await waitForOpen(socket);
+      const closed = waitForClose(socket);
+      socket.send(
+        JSON.stringify({
+          type: "world.subscribe",
+          messageId: "subscribe-failure",
+          clientSequence: "1",
+          sceneId: "city-district",
+          lastSequence: null,
+        }),
+      );
+      const error = await received.waitFor((message) => message.type === "world.error");
+      assert.equal(error.code, "WORLD_UNAVAILABLE");
+      assert.doesNotMatch(JSON.stringify(error), /private database diagnostics/);
+      assert.equal((await closed).code, 1011);
+      assert.equal(server.runtime.stats().clients, 0);
+    } finally {
+      socket.terminate();
+      await server.app.close();
+    }
+  });
+});
 
 test("world socket bootstraps, fans out exactly once, validates ack, and survives resubscribe", async () => {
   await withTestSchema(async ({ sql }) => {
@@ -768,11 +821,13 @@ test("fresh subscribe cannot relocate an existing authenticated presence", async
           lastSequence: null,
         }),
       );
-      await received.waitFor((message) => message.type === "world.resync_required");
-      assert.equal(
-        received.messages.some((message) => message.type === "world.bootstrap"),
-        false,
+      const bootstrap = await received.waitFor((message) => message.type === "world.bootstrap");
+      assert.equal((bootstrap.scene as Message).id, "city-district");
+      assert.deepEqual(
+        { x: (bootstrap.player as Message).x, y: (bootstrap.player as Message).y },
+        { x: 20, y: 10 },
       );
+      await received.waitFor((message) => message.type === "world.ready");
       const [saved] = await sql<{ scene_id: string; x: number; y: number }[]>`
         select scene_id, x, y from player_presence where session_id = ${sessionId}
       `;

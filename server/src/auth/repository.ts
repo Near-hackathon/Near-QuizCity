@@ -18,6 +18,7 @@ export type SessionRow = {
   csrf_hash: string;
   expires_at: Date;
   revoked_at: Date | null;
+  session_kind: "wallet" | "browser";
 };
 
 export async function recentNonceCount(client: AuthClient, accountId: string, since: Date): Promise<number> {
@@ -91,11 +92,12 @@ export async function insertSession(
     accountId: string;
     csrfHash: string;
     expiresAt: Date;
+    sessionKind?: "wallet" | "browser";
   },
 ): Promise<void> {
   await client`
-    insert into auth_sessions (token_hash, account_id, csrf_hash, expires_at)
-    values (${input.tokenHash}, ${input.accountId}, ${input.csrfHash}, ${input.expiresAt})
+    insert into auth_sessions (token_hash, account_id, csrf_hash, expires_at, session_kind)
+    values (${input.tokenHash}, ${input.accountId}, ${input.csrfHash}, ${input.expiresAt}, ${input.sessionKind ?? "wallet"})
   `;
 }
 
@@ -109,7 +111,7 @@ export async function findSession(
     where token_hash = ${tokenHash}
       and revoked_at is null
       and expires_at > ${now}
-    returning token_hash, account_id, csrf_hash, expires_at, revoked_at
+    returning token_hash, account_id, csrf_hash, expires_at, revoked_at, session_kind
   `;
   return row ?? null;
 }

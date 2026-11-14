@@ -53,6 +53,8 @@ export function createWorldTransport(options: Options = {}): WorldTransport {
   let sequence: string | null = null;
   let clientSequence = 0n;
   let messageId = 0;
+  // Receipts survive reloads; a new transport must never reuse c1/c2/... IDs.
+  const commandNamespace = crypto.randomUUID();
   let status: WorldStatus = "offline";
 
   const setStatus = (next: WorldStatus) => {
@@ -67,7 +69,7 @@ export function createWorldTransport(options: Options = {}): WorldTransport {
 
   const request = (make: (id: string) => WorldClientMessageType, message?: string): Promise<string> => {
     if (pending.size >= 100) return Promise.reject(new Error("too many pending world commands"));
-    const id = `c${++messageId}`;
+    const id = `${commandNamespace}:c${++messageId}`;
     try {
       send(make(id));
     } catch (error) {
@@ -92,7 +94,7 @@ export function createWorldTransport(options: Options = {}): WorldTransport {
   const scheduleReconnect = () => {
     if (stopped || reconnectTimer !== null) return;
     reconnectAttempt += 1;
-    const delay = Math.min(15_000, 250 * 2 ** reconnectAttempt + Math.floor(random() * 250));
+    const delay = Math.min(5_000, 250 * 2 ** reconnectAttempt + Math.floor(random() * 250));
     setStatus("reconnecting");
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = null;
@@ -107,7 +109,7 @@ export function createWorldTransport(options: Options = {}): WorldTransport {
     socket = ws;
     ws.onopen = () => {
       if (socket !== ws) return;
-      const id = `c${++messageId}`;
+      const id = `${commandNamespace}:c${++messageId}`;
       clientSequence += 1n;
       ws.send(
         JSON.stringify({
@@ -165,14 +167,24 @@ export function createWorldTransport(options: Options = {}): WorldTransport {
           for (const listener of eventListeners) listener(message.event);
         }
       } else if (message.type === "world.bootstrap") {
+        if (message.streamId !== `scene:${message.scene.id}`) {
+          setStatus("resyncing");
+          sequence = null;
+          ws.close(1012, "invalid bootstrap stream");
+          return;
+        }
         sceneId = message.scene.id;
         sequence = message.lastSequence;
         if (BigInt(message.player.lastClientSequence) > clientSequence) {
           clientSequence = BigInt(message.player.lastClientSequence);
         }
-        reconnectAttempt = 0;
-        setStatus("online");
       } else if (message.type === "world.ready") {
+        if (message.streamId !== `scene:${sceneId}` || sequence === null || message.sequence !== sequence) {
+          setStatus("resyncing");
+          sequence = null;
+          ws.close(1012, "invalid ready barrier");
+          return;
+        }
         sequence = message.sequence;
         if (BigInt(message.lastClientSequence) > clientSequence) {
           clientSequence = BigInt(message.lastClientSequence);
@@ -182,6 +194,7 @@ export function createWorldTransport(options: Options = {}): WorldTransport {
       } else if (message.type === "world.resync_required") {
         setStatus("resyncing");
         sequence = null;
+        if (message.sceneId) sceneId = message.sceneId;
         ws.close(1012, "resync");
       } else if (message.type === "world.ack") {
         const waiting = pending.get(message.messageId);
@@ -228,6 +241,7 @@ export function createWorldTransport(options: Options = {}): WorldTransport {
       rejectPending("world subscription replaced");
       stopped = false;
       reconnectAttempt = 0;
+      sequence = last;
       open(targetScene, last);
     },
     sendMove(x, y) {

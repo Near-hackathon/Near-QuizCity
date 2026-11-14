@@ -1,8 +1,44 @@
 # QUIZ CITY
 
-A persistent multiplayer city where quiz credits (QC) are real on-chain money. Players prove knowledge, take jobs, buy plots, open venues, and trade businesses. Every balance and ownership claim is enforced by a NEAR smart contract; Postgres is a disposable read model.
+A browser multiplayer city where quiz credits (QC) are integer game credits recorded on-chain. Players prove knowledge, take jobs, buy plots, open venues, and trade businesses. Every balance and ownership claim is enforced by a NEAR smart contract; PostgreSQL stores gameplay progress alongside a rebuildable chain mirror.
 
 Built for the NEAR "Games With Real Economies" hackathon.
+
+The browser opens on an illustrated landing page. Click **Play**, enter a username and
+first name, and meet the welcome guide. Returning residents enter with one click on the
+same browser. Profiles use an HttpOnly device credential; usernames are not passwords.
+Connect a NEAR wallet inside the phone to use the economy and enable wallet recovery.
+
+The city runs full-screen with a small floating phone. Jobs, quizzes, wallet setup,
+property purchases, shops, stock controls and owner withdrawals stay inside that phone.
+Six residents have generic display names and daily routines. The apartment belongs to
+Professor Reed; other residents work, take breaks and walk around the city.
+See [starter residents](docs/starter-residents.md) and the delivery notes below for scope.
+
+Research offers now include a saved reading brief, knowledge check and summary. Shops
+use server-priced stock reservations and the idempotent `pay_order` contract method.
+**Testnet contract updated on 14 November 2026.** The production artifact is deployed
+with a state-preserving migration, and the server uses a restricted payout key.
+Automatic accounts now complete registration and receive their confirmed starter
+allowance. See [deployment evidence](docs/testnet-deployment-2026-11-14.md).
+The retired full-access server key was revoked after explicit owner approval;
+QC-0105 is complete.
+
+For the city, prepare licensed local assets with `npm run assets:prepare`, check maps
+with `npm run maps:check`, apply pending database migrations while the API is stopped,
+then run `npm run dev`. Exterior collision migration `0023` preserves sessions and
+relocates only players inside the newly blocked facades. See
+[Phase 7 handoff](docs/phase7-codex-handoff.md) for browser smoke, local-stack tests,
+asset preparation, current evidence and remaining release checks.
+
+The district visual pass uses `new assets/building free.png`,
+`new assets/free campus assets.png`, and
+`new assets/InteriorsAndFurniture/FurnitureSheet.png`. Keep these local files at those
+paths and rerun `npm run assets:prepare` after adding them. The catalogue records the
+owner's permission confirmation separately from creator-supplied licences. Raw packs
+and generated copies remain ignored. Migration `0026` activates the furniture collision
+layouts and safely relocates newly blocked positions; stop the API while applying it.
+See [visual pass and verification](docs/visual-slice.md).
 
 - Contract (testnet): [`quizcity.testnet`](https://testnet.nearblocks.io/address/quizcity.testnet)
 - Web app: Vite + React (runs at http://localhost:5173)
@@ -12,10 +48,10 @@ Built for the NEAR "Games With Real Economies" hackathon.
 
 1. **Register** — creates your on-chain identity and logical wallet `player:<account>`.
 2. **Claim 500 QC** — one-time starter allowance, once per account.
-3. **Work** — take a job from Professor Kofi (an NPC with a bounded wallet), finish it, get paid by the NPC, not by minting.
+3. **Work** — take a job from Professor Reed (an NPC with a bounded wallet), finish it, get paid by the NPC, not by minting.
 4. **Learn** — pass the daily quiz (6 of 8). Rewards are operator-signed and capped at 1,000 QC per call.
 5. **Own** — buy a plot. The contract moves QC and title atomically; a plot cannot have two owners.
-6. **Trade** — open a venue (100 QC permit, burned), sell tickets, transfer the business to another player.
+6. **Trade** — open a venue (100 QC permit, burned), list stocked items, and transfer the business to another player.
 
 Running totals (`total_issued`, `total_burned`, `tx_count`) are on chain, so the economy is auditable rather than asserted. `tx_count` counts ledger movements (mint, burn, transfer); registry events have their own monotonic `seq` in the canonical event log.
 
@@ -38,14 +74,15 @@ The server never trusts a client claim. Each write endpoint takes a `txHash`, fe
 
 ### Why NPCs cannot print money
 
-`pay_job` is operator-only and moves QC from the NPC wallet to the worker via the same internal transfer used by players. Professor Kofi starts with 1,000 QC and pays 100 per job, so he stops hiring when his wallet runs dry. Quiz rewards are the only minted issuance, and they are per-call capped. Both `pay_job` and `credit_reward` require a unique reference, so a retried HTTP request cannot pay twice.
+`pay_job` is operator-only and moves QC from the NPC wallet to the worker via the same internal transfer used by players. Professor Reed starts with 1,000 QC and pays 100 per job, so he stops hiring when his wallet runs dry. Quiz rewards are the only minted issuance, and they are per-call capped. Both `pay_job` and `credit_reward` require a unique reference, so a retried HTTP request cannot pay twice.
 
 ## Repo layout
 
 ```
 contract/        Rust contract, unit tests, deployable wasm
 server/          Fastify API, Postgres schema, sync + operator, scripts
-web/             React UI (city grid, jobs, quiz, business, ledger)
+web/             React shell, Phaser city, landing page and in-game phone
+packages/        Shared protocol schemas, maps and navigation data
 ```
 
 The ordered implementation plan, audit findings, task dependencies, and acceptance gates are in [`TECHNICAL_WORKFLOW.md`](./TECHNICAL_WORKFLOW.md). Start with Phase 0 and do not skip the backend-complete gate before building the final city art.
@@ -60,47 +97,55 @@ The contract uses `near-sdk` 5.30.1, which declares protocol version 85, so rust
 npm ci
 
 # 1. Database and configuration
-cp server/.env.example server/.env        # set DATABASE_URL, operator key
+cp server/.env.example server/.env        # first setup only; preserve an existing .env
+# Set DATABASE_URL and the configured contract/operator values in server/.env.
 # Local demo only: APP_ENV=local, HOST=127.0.0.1, NEAR_NETWORK=testnet, DEMO_MODE=1
 createdb quizcity
 npm run db:push                       # applies ordered SQL migrations from server/db/migrations/
 npm run db:seed                       # demo quiz, job, NPC, and connected world seed (idempotent)
+npm run world:seed:residents          # six scheduled residents (idempotent)
+npm run assets:prepare               # requires the local art packs described above
 # npm run db:reset requires --confirm-local-reset and APP_ENV=local|test
 # npm run db:test runs PostgreSQL integration tests against TEST_DATABASE_URL
 
 # 2. Contract checks (only needed if you change the contract)
-npm run contract:test                     # 49 unit tests
+npm run contract:test                     # production contract unit tests
 npm run contract:fmt:check
 npm run contract:clippy                   # includes the demo-reset feature
 npm run contract:build                    # production WASM, no demo helpers
 
-# 3. Deploy + seed the disposable testnet demo state
-#    Builds the demo artifact, verifies it exposes both demo helpers, then
-#    deploys, calls migrate_reset, and seeds NPC/plot.
-NEAR_DEPLOY_PRIVATE_KEY=<contract-account-full-access-key> npm run chain:seed
-
-# 4. Read model
-npm run db:reset && npm run db:seed
-
-# 5. Run
+# 3. Run against the configured contract; no deployment or reset is needed.
 npm run dev                               # API :8787, web :5173
 ```
 
+Open `http://localhost:5173`, click **Play**, and create a resident. To run only the
+API, use `npm run dev --workspace=server` from the repository root. Run the web app
+separately with `npm run dev --workspace=web`. Stop an existing API before starting
+another on port 8787.
+
+Live contract deployment is a separate administrator operation. Complete
+QC-0105's recovery-key and restricted-payout-key sequence before using `chain:seed`;
+that command deploys and resets disposable testnet state. It is not part of normal
+local startup. Local contract/RPC tests use `npm run test:e2e:local` instead.
+
 `.env` keys: `APP_ENV`, `DEMO_MODE`, `DATABASE_URL`, `PGSSL`, `PORT`, `HOST`, `WEB_ORIGIN`, `NEAR_NETWORK`, `NEAR_RPC_URL`, `NEAR_CONTRACT_ID`, `NEAR_OPERATOR_ACCOUNT`, `NEAR_OPERATOR_PRIVATE_KEY`, `NPC_TICK_MS`, `E2E_API`, and the chain/readiness worker settings (`CHAIN_EVENT_SOURCE_URL`, `CHAIN_SOURCE_REQUIRED`, `CHAIN_START_BLOCK`, `CHAIN_POLL_INTERVAL_MS`, `CHAIN_PAGE_SIZE`, `CHAIN_FETCH_TIMEOUT_MS`, `CHAIN_MAX_RETRIES`, `READINESS_TIMEOUT_MS`). See [`docs/chain-ingestion.md`](./docs/chain-ingestion.md). Staging and production refuse to start without a chain event source unless `CHAIN_SOURCE_REQUIRED=0` is set explicitly. Configuration is validated once at startup; invalid or missing values stop the process with an actionable message and a redacted summary is logged. Tests import the pure validator and need no `.env`.
 
-`NEAR_OPERATOR_PRIVATE_KEY` is a payout-only function-call key for `credit_reward` and `pay_job`. `NEAR_DEPLOY_PRIVATE_KEY` is the contract account's offline full-access deploy/recovery key and is required only for `npm run chain:seed`; pass it in the shell and never store it in `server/.env`.
+`NEAR_OPERATOR_PRIVATE_KEY` is a payout-only function-call key for exactly `credit_reward,pay_job,settle_escrow,npc_purchase`. `NEAR_DEPLOY_PRIVATE_KEY` is the contract account's offline full-access deploy/recovery key and is required only for `npm run chain:seed`; pass it in the shell and never store it in `server/.env`.
 
 Use `https://rpc.testnet.fastnear.com`; the public `rpc.testnet.near.org` endpoint is rate-limited and returns 429s.
 
 ## Demo walkthrough
 
-1. Sign in as `alice-quizcity.testnet` (demo keys are served only when `DEMO_MODE=1`).
-2. Register → claim 500 → accept and complete Professor Kofi's job (+100).
+1. Open **Play** and create a browser resident, or return through a saved username.
+   Link a wallet through the phone. Disposable Alice/Bob adapters are available only
+   in explicitly enabled local demo mode.
+2. Register → claim 500 → accept and complete Professor Reed's job (+100).
 3. Play the daily quiz (+25 on a pass, once per day).
 4. Buy plot `#1` for 300 QC.
-5. Open a venue on the plot (−100 permit) and pay a 20 QC ticket as `bob-quizcity.testnet`.
+5. Open a venue on the plot (−100 permit), add catalogue stock, and purchase an item
+   as another player. Checkout requires the reviewed updated contract deployment.
 6. Transfer the venue to Bob from Alice's business panel.
-7. After the job is paid, the NPC tick posts a fresh job within ~20s — the city keeps hiring as long as Kofi has QC.
+7. After the job is paid, the NPC tick posts a fresh job within ~20s — the city keeps hiring as long as the professor has QC.
 
 ## Contract API
 
@@ -117,6 +162,8 @@ Use `https://rpc.testnet.fastnear.com`; the public `rpc.testnet.near.org` endpoi
 | `buy_property(id)`                                                        | any player                  | Atomic QC + title swap; no self-buy                    |
 | `create_business(property_id, name)`                                      | plot owner                  | 100 QC permit, burned; one per property                |
 | `pay_service(business_id, amount)`                                        | customer                    | Pays the business treasury                             |
+| `pay_order(business_id, amount, reference)`                               | customer                    | Idempotent payment bound to buyer, business and total  |
+| `supports_orders()`                                                       | anyone                      | Checkout capability view                               |
 | `business_withdraw(id, amount)`                                           | owner                       | Owner-only treasury withdrawal                         |
 | `transfer_business(id, new_owner)`                                        | owner                       | Moves the operating company only                       |
 | `set_paused(paused)` / `propose_operator` / `accept_operator`             | operator                    | Pause payouts; two-step operator rotation              |
@@ -159,7 +206,7 @@ npm run exploit:testnet                    # guarded legacy manual exploit scrip
 
 `e2e` drives register → claim → job → quiz → property → business → transfer and asserts exact balances. `exploit` mutates demo state, so reset afterwards (below). It covers forged hashes, cross-account transaction use, SQL injection in paths, answer leakage, quiz replay, non-employee job completion, request-tampered payment amounts, demo-key leakage, and ledger duplication.
 
-The deterministic local E2E end state is Alice 225 QC, Bob 485 QC, Professor Kofi 9,900 QC, business treasury 15 QC, and council 300 QC. The flow includes a 5 QC owner withdrawal after the 20 QC service payment and verifies that exact receipt replay does not apply it twice.
+The deterministic local E2E end state is Alice 225 QC, Bob 485 QC, Professor Reed 9,900 QC, business treasury 15 QC, and council 300 QC. The flow includes a 5 QC owner withdrawal after the 20 QC service payment and verifies that exact receipt replay does not apply it twice.
 
 ## Reset
 
@@ -202,7 +249,7 @@ npm run payout-key:verify -- --public-key ed25519:<new-key>
 ## Security notes
 
 - The operator key lives only in the server environment. It is never sent to the browser and `/demo/accounts` filters it out. It must be a payout-only function-call key for `credit_reward` and `pay_job`, not a full-access key.
-- Demo sign-in uses disposable testnet keys in `localStorage` and is only reachable through `DEMO_MODE=1`. Server-side auth is a real NEP-413 Borsh/prefix/SHA-256 signature check over one-time, domain/network-bound nonces; only full-access keys can authenticate. The full wallet-selector UX is still deferred (QC-0502), so non-demo browser deployments remain read-only until then.
+- Demo sign-in uses disposable testnet keys in `localStorage` and is only reachable through `DEMO_MODE=1`. Server-side auth is a real NEP-413 Borsh/prefix/SHA-256 signature check over one-time, domain/network-bound nonces; only full-access keys can authenticate. The browser supports MyNearWallet; browser-only profiles can explore before connecting a wallet.
 - `DEMO_MODE` defaults to `0`; configuration omission cannot expose keys.
 - The Postgres mirror can be wiped and rebuilt with `POST /sync` / `npm run db:reset`; it holds no authority.
 - `reset_demo` is operator-gated; `migrate_reset` is `#[private]` and callable only by the contract account. Both exist only in the `demo-reset` build. Production builds do not export them.
@@ -261,4 +308,49 @@ rolls back, and rebuild/full-sync share an exclusion guard.
 - Single city plot seed; the schema supports many districts.
 - Real-time presence and chat are out of scope; NPC, chain-ingester, job-reconciliation, and quiz-reconciliation workers run in-process.
 - Deployed to testnet only. For production, point `DATABASE_URL` at Neon, host the API behind TLS, disable demo mode, and configure `CHAIN_EVENT_SOURCE_URL`.
-- The full browser wallet-selector UX is still deferred (QC-0502); non-demo browser deployments are read-only. The server-side signed-message login path is implemented.
+- Browser profiles can explore without a wallet. Economic actions require a connected, authenticated wallet; public release still requires the deferred deployment/key work.
+
+## Browser-game delivery checks
+
+- `npm run verify`: deterministic formatting, lint, types, fast tests and builds; no database required.
+- `npm run test:web`: phone, landing, profile entry, onboarding and management component tests.
+- `npm run db:test`: requires a disposable `TEST_DATABASE_URL`; each test creates its own schema.
+- `npm run test:coverage --workspace=server`: fast + PostgreSQL + shared tests under one coverage report. It requires `TEST_DATABASE_URL` and keeps the existing 68/88/78 floors. CI runs it in the PostgreSQL job; unit tests themselves remain database-free.
+- `npm run test:game:entry`: real Chrome + isolated Fastify/PostgreSQL. Covers signup, NEAR welcome, every phone app, logout, one-click return and reload. Set `CHROME_PATH` outside the default macOS Chrome location.
+- `npm run test:game:stack`: native movement, doors, resident interaction and return trips.
+- `npm run test:e2e:local`: local NEAR sandbox, real order payment, stock fulfillment, withdrawal, research payout, quiz reward and replay checks.
+
+Migrations `0027`–`0031` add browser profiles, separate residential suites, immutable
+research assignments and catalogue/order/stock records. Apply while application
+workers are stopped. Existing wallet balances, ownership, accepted/submitted jobs and
+venue-hours overrides are preserved. `0029` upgrades only unaccepted NPC job offers.
+Opening stock and manually recorded deliveries do not debit QC or fabricate revenue.
+Orders hold stock until payment is resolved; unknown transactions are not automatically
+released or resubmitted. Supplier settlement, cancellation/refunds and NPC shopping need
+their own next-stage workflows.
+
+### Automatic testnet accounts
+
+Username signup supports a separate encrypted, game-managed NEAR testnet wallet
+per resident. Enable locally with `npm run db:push` and
+`npm run wallets:setup -- --enable`, then restart the API. Players can download a
+recovery backup from their phone Wallet app. See
+[setup, custody, retries and recovery](docs/managed-testnet-wallets.md).
+The existing live contract upgrade gate still applies: account creation can finish
+and existing saved signup requests have completed against the upgraded contract.
+
+### NEAR learning and friend matches
+
+Inside the quiz centre, open **Phone → Quizzes → Compete**. Choose **Find an
+opponent** for automatic pairing at the same stake, or check **List this room
+publicly** so other players can browse and join. Private invite rooms remain
+available. Searching never spends QC; both players confirm their own deposits. Both players fund their chosen QC stake
+into contract escrow; the higher score wins the pot after the 2% centre deduction. Ties and cancelled
+or expired lobbies refund confirmed QC deposits including fees. New stakes use 50 QC increments to keep the 2% fee exact in whole QC units.
+There is no QC gas-support charge; native NEAR gas is separate. Existing rooms
+retain their original quoted terms. Practice questions, research and NPC guidance
+teach NEAR using official sources.
+
+Apply `npm run db:push` and restart the server after updating. The administrator
+bootstrap for the two empty fee wallets, payment recovery, scoring authority and
+test commands are documented in [NEAR quiz matches](docs/near-quiz-matches.md).

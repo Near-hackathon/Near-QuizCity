@@ -1,10 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { act } from "react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Property } from "./api";
+import { registerDemoKey } from "./wallet/demo-loader";
 
 const api = vi.hoisted(() => ({
   config: vi.fn(),
+  demoAccounts: vi.fn(),
   properties: vi.fn(),
   businesses: vi.fn(),
   jobs: vi.fn(),
@@ -86,6 +89,7 @@ const property: Property = {
 };
 
 beforeEach(() => {
+  vi.mocked(registerDemoKey).mockReset();
   Object.values(api).forEach((mock) => mock.mockReset());
   Object.values(chain).forEach((mock) => mock.mockReset());
   Object.values(auth).forEach((mock) => mock.mockReset());
@@ -114,6 +118,45 @@ beforeEach(() => {
 });
 
 describe("App", () => {
+  it("shows loading while authenticating and publishes the selected account only after server sign-in", async () => {
+    api.config.mockResolvedValue({ demoMode: true, networkId: "testnet", contractId: "quizcity.testnet" });
+    api.demoAccounts.mockResolvedValue({
+      accounts: [{ accountId: "alice.testnet", publicKey: "unused", secretKey: "unused" }],
+    });
+    let finish!: (value: { accountId: string; roles: string[]; expiresAt: string }) => void;
+    auth.ensureAuth.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderApp();
+    await userEvent.setup().click(await screen.findByRole("button", { name: /alice.*alice.testnet/ }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Signing you in");
+    expect(screen.queryByText("Register as a resident")).not.toBeInTheDocument();
+    expect(screen.queryByText("Knowledge / Commercial District")).not.toBeInTheDocument();
+    expect(chain.saveSession).not.toHaveBeenCalled();
+    await act(async () =>
+      finish({ accountId: "alice.testnet", roles: ["player"], expiresAt: "2099-01-01T00:00:00Z" }),
+    );
+    await waitFor(() =>
+      expect(chain.saveSession).toHaveBeenCalledWith(expect.objectContaining({ accountId: "alice.testnet" })),
+    );
+  });
+  it("shows a safe demo key-load failure without saving a session or leaking diagnostics", async () => {
+    api.config.mockResolvedValue({ demoMode: true, networkId: "testnet", contractId: "quizcity.testnet" });
+    api.demoAccounts.mockResolvedValue({
+      accounts: [{ accountId: "alice.testnet", publicKey: "unused", secretKey: "unused" }],
+    });
+    vi.mocked(registerDemoKey).mockRejectedValueOnce(new Error("internal key-loader details"));
+    renderApp();
+    await userEvent.setup().click(await screen.findByRole("button", { name: /alice.*alice.testnet/ }));
+    expect(
+      await screen.findByText("Demo sign-in could not start. Refresh the page and try again."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("internal key-loader details")).not.toBeInTheDocument();
+    expect(chain.saveSession).not.toHaveBeenCalled();
+  });
   it("renders the read-only dashboard with exact economy values", async () => {
     const { container } = renderApp();
     expect(await screen.findByText("Knowledge / Commercial District")).toBeInTheDocument();

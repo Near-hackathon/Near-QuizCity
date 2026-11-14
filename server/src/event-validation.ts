@@ -13,6 +13,19 @@ export class EventValidationError extends Error {
 }
 
 const MOVEMENTS: Record<string, Movement | "wallet_created"> = {
+  escrow_funded: "transfer",
+  escrow_sponsored: "transfer",
+  charge_cancelled: "registry",
+  lease_offered: "registry",
+  lease_started: "registry",
+  escrow_released: "transfer",
+  escrow_refunded: "transfer",
+  charge_paid: "transfer",
+  admission_refunded: "transfer",
+  order_refunded: "transfer",
+  order_cancelled: "registry",
+  business_listed: "registry",
+  business_sold: "transfer",
   player_registered: "registry",
   starter_allowance: "mint",
   wallet_transfer: "transfer",
@@ -168,6 +181,74 @@ export function validateEventData(
   validateMovement(movement, walletFrom, walletTo, amount);
 
   switch (event) {
+    case "escrow_funded":
+    case "escrow_released":
+    case "escrow_refunded":
+    case "escrow_sponsored": {
+      const id = requireString(data, "escrow_id");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))
+        fail("invalid escrow ID");
+      validateEntity(event, entityId, `escrow:${id}`);
+      const purpose = requireString(data, "purpose");
+      if (!["job", "prize", "supply", "admission", "rent", "upkeep", "public_contract"].includes(purpose))
+        fail("invalid reservation purpose");
+      if (event === "escrow_funded" || event === "escrow_sponsored") {
+        if (walletTo !== `gov:escrow.${id}`) fail("reservation funding has the wrong recipient");
+        if (event === "escrow_funded") {
+          requireString(data, "owner");
+          requireNullableString(data, "beneficiary");
+        }
+      } else if (walletFrom !== `gov:escrow.${id}`) fail("reservation settlement has the wrong source");
+      break;
+    }
+    case "charge_paid":
+      validateEntity(event, entityId, walletTo as string);
+      break;
+    case "charge_cancelled":
+      requireString(data, "source_wallet");
+      break;
+    case "order_cancelled":
+      requireString(data, "buyer");
+      break;
+    case "admission_refunded": {
+      const id = requireInteger(data, "business_id", 1);
+      requireString(data, "payment_reference");
+      validateEntity(event, entityId, `business:${id}`);
+      if (walletFrom !== `biz:${id}` || !walletTo?.startsWith("player:"))
+        fail("ticket refund has invalid parties");
+      break;
+    }
+    case "order_refunded": {
+      const id = requireInteger(data, "business_id", 1);
+      requireString(data, "order_reference");
+      validateEntity(event, entityId, `business:${id}`);
+      if (walletFrom !== `biz:${id}`) fail("refund must debit the original business");
+      break;
+    }
+    case "business_listed": {
+      const id = requireInteger(data, "business_id", 1);
+      requireString(data, "owner");
+      requireU128(data, "listing_price");
+      validateEntity(event, entityId, `business:${id}`);
+      break;
+    }
+    case "lease_offered": {
+      const id = requireInteger(data, "property_id", 1);
+      requireString(data, "owner_wallet");
+      requireU128(data, "rent");
+      if (![7, 30].includes(requireInteger(data, "period_days", 1))) fail("unsupported lease period");
+      validateEntity(event, entityId, `property:${id}`);
+      break;
+    }
+    case "lease_started": {
+      const id = requireInteger(data, "property_id", 1);
+      requireString(data, "tenant");
+      const ends = requireU128(data, "ends_at"),
+        grace = requireU128(data, "grace_ends_at");
+      if (grace <= ends) fail("invalid lease grace period");
+      validateEntity(event, entityId, `property:${id}`);
+      break;
+    }
     case "player_registered": {
       const account = requireString(data, "account");
       const ownerWallet = requireString(data, "owner_wallet");
@@ -255,6 +336,7 @@ export function validateEventData(
       validateEntity(event, entityId, `business:${id}`);
       break;
     }
+    case "business_sold":
     case "business_transferred": {
       const id = requireInteger(data, "id", 1);
       const previousOwner = requireString(data, "previous_owner");
@@ -267,6 +349,8 @@ export function validateEventData(
       if (newOwnerWallet !== `player:${newOwner}`) {
         fail(`business_transferred new_owner_wallet must be player:${newOwner}`);
       }
+      if (event === "business_sold" && (walletFrom !== newOwnerWallet || walletTo !== previousOwnerWallet))
+        fail("business sale must move QC from buyer to seller");
       validateEntity(event, entityId, `business:${id}`);
       break;
     }

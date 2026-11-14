@@ -6,7 +6,8 @@ import {
   type FunctionCallPermission,
 } from "../src/access-key.js";
 
-const DEFAULT_METHODS = ["credit_reward", "pay_job"];
+import { CITY_PAYOUT_METHODS } from "../src/testnet-upgrade.js";
+const DEFAULT_METHODS = [...CITY_PAYOUT_METHODS];
 
 function usage(): string {
   return `Usage: node --env-file=.env --import tsx scripts/verify-operator-key.ts --public-key <ed25519:...> [options]

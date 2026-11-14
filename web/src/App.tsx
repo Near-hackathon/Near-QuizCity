@@ -12,6 +12,7 @@ import { CityGrid, PropertyCard, money } from "./components/CityGrid";
 import { JobsPanel, QuizPanel } from "./components/JobsPanel";
 import { Ledger } from "./components/Ledger";
 import { Onboard } from "./components/Onboard";
+import { CityLoading } from "./components/CityLoading";
 
 type Notice = { kind: "ok" | "err"; text: string; tx?: string | null };
 
@@ -19,6 +20,8 @@ export type AppMode = "city" | "manage" | "admin";
 
 export function App({ mode = "city" }: { mode?: AppMode } = {}) {
   const [session, setSession] = useState<Session | null>(loadSession());
+  const [enteringCity, setEnteringCity] = useState(false);
+  const [restoringSession, setRestoringSession] = useState(!!session);
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [player, setPlayer] = useState<ChainPlayer | null>(null);
   const [balance, setBalance] = useState("0");
@@ -91,6 +94,7 @@ export function App({ mode = "city" }: { mode?: AppMode } = {}) {
 
   useEffect(() => {
     let active = true;
+    setRestoringSession(!!session);
     api
       .config()
       .then(async (runtime) => {
@@ -112,10 +116,15 @@ export function App({ mode = "city" }: { mode?: AppMode } = {}) {
               : "wallet is not connected or the account changed",
           );
         }
-        return ensureAuth(session.accountId, signer);
+        const authenticated = await ensureAuth(session.accountId, signer);
+        if (active) window.dispatchEvent(new Event("qc:auth-ready"));
+        return authenticated;
       })
       .catch((err: Error) => {
         if (active) setNotice({ kind: "err", text: `sign-in failed: ${err.message}` });
+      })
+      .finally(() => {
+        if (active) setRestoringSession(false);
       });
     return () => {
       active = false;
@@ -184,20 +193,33 @@ export function App({ mode = "city" }: { mode?: AppMode } = {}) {
 
   async function login(account: DemoAccount) {
     if (!config?.demoMode) throw new Error("demo accounts are disabled by the server");
-    await registerDemoKey(config.demoMode, account.accountId, account.publicKey, account.secretKey);
-    const next: Session = {
-      accountId: account.accountId,
-      publicKey: account.publicKey,
-      networkId: config.networkId,
-      walletId: "demo",
-      authenticatedAt: new Date().toISOString(),
-    };
-    saveSession(next);
-    setSession(next);
-    setNotice({ kind: "ok", text: `Signed in as ${account.accountId}` });
+    setEnteringCity(true);
+    try {
+      await registerDemoKey(config.demoMode, account.accountId, account.publicKey, account.secretKey);
+      const signer = await demoSigner(config.demoMode, account.accountId);
+      if (!signer) throw new Error("demo signer unavailable");
+      // Publish local identity only after the authenticated server session exists.
+      // Otherwise the city route briefly falls back to the registration dashboard.
+      await ensureAuth(account.accountId, signer);
+      const next: Session = {
+        accountId: account.accountId,
+        publicKey: account.publicKey,
+        networkId: config.networkId,
+        walletId: "demo",
+        authenticatedAt: new Date().toISOString(),
+      };
+      saveSession(next);
+      setSession(next);
+      setNotice({ kind: "ok", text: `Signed in as ${account.accountId}` });
+    } catch {
+      setNotice({ kind: "err", text: "Demo sign-in could not start. Refresh the page and try again." });
+    } finally {
+      setEnteringCity(false);
+    }
   }
 
   async function connectNormalWallet() {
+    setEnteringCity(true);
     try {
       if (!config) throw new Error("deployment configuration is not loaded");
       const account = await wallet.connect(config.networkId, config.contractId);
@@ -205,6 +227,7 @@ export function App({ mode = "city" }: { mode?: AppMode } = {}) {
         setNotice({ kind: "err", text: "wallet connection was not completed" });
         return;
       }
+      await ensureAuth(account.accountId, wallet.signer(account.accountId));
       const next: Session = {
         accountId: account.accountId,
         publicKey: account.publicKey,
@@ -219,6 +242,8 @@ export function App({ mode = "city" }: { mode?: AppMode } = {}) {
         kind: "err",
         text: error instanceof Error ? error.message : "wallet connection failed",
       });
+    } finally {
+      setEnteringCity(false);
     }
   }
 
@@ -253,7 +278,7 @@ export function App({ mode = "city" }: { mode?: AppMode } = {}) {
   function buyProperty(property: Property) {
     if (!session) return;
     void run(async () => {
-      const tx = await sendContractTransaction("buy_property", { property_id: property.id });
+      const tx = await sendContractTransaction("buy_property", { property_id: Number(property.id) });
       await api.buyProperty(property.id, tx);
       return tx;
     }, `Bought plot #${property.id}`);
@@ -263,7 +288,7 @@ export function App({ mode = "city" }: { mode?: AppMode } = {}) {
     if (!session) return;
     void run(async () => {
       const tx = await sendContractTransaction("create_business", {
-        property_id: property.id,
+        property_id: Number(property.id),
         name,
       });
       await api.createBusiness(property.id, name, tx);
@@ -330,6 +355,8 @@ export function App({ mode = "city" }: { mode?: AppMode } = {}) {
       return tx;
     }, `Transferred ${business.name} to ${newOwner}`);
   }
+
+  if (mode === "city" && (enteringCity || restoringSession)) return <CityLoading message="Signing you in…" />;
 
   return (
     <div className="shell">

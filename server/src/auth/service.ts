@@ -1,3 +1,4 @@
+import { isBrowserAccount } from "@quiz-city/protocol";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Sql } from "postgres";
 import { providers, utils } from "near-api-js";
@@ -117,6 +118,8 @@ export async function issueNonce(
   accountId: string,
   deps: AuthDeps = defaultAuthDeps(runtime),
 ): Promise<NonceResult> {
+  if (isBrowserAccount(accountId))
+    throw new AppError("FORBIDDEN", "This account name is reserved for a browser resident.", 403);
   const issuedAt = deps.now();
   const expiresAt = new Date(issuedAt.getTime() + NONCE_TTL_MS);
   const domain = domainFor(runtime);
@@ -191,6 +194,8 @@ export async function verifyLogin(
   input: LoginInput,
   deps: AuthDeps = defaultAuthDeps(runtime),
 ): Promise<LoginResult> {
+  if (isBrowserAccount(input.accountId))
+    throw new AppError("FORBIDDEN", "This account name is reserved for a browser resident.", 403);
   const now = deps.now();
   let nonceBytes: Uint8Array;
   try {
@@ -275,7 +280,7 @@ export async function authenticateSession(
   if (!row) return null;
   return {
     accountId: row.account_id,
-    roles: await rolesFor(client, row.account_id),
+    roles: row.session_kind === "browser" ? ["player"] : await rolesFor(client, row.account_id),
     sessionTokenHash: row.token_hash,
     csrfHash: row.csrf_hash,
     expiresAt: row.expires_at.toISOString(),

@@ -5,6 +5,7 @@ import { createTestRouter } from "./router";
 import { StateProvider } from "../state/StateProvider";
 
 const api = vi.hoisted(() => ({
+  profiles: vi.fn(),
   config: vi.fn(),
   authMe: vi.fn(),
   properties: vi.fn(),
@@ -22,6 +23,7 @@ const chain = vi.hoisted(() => ({
   saveSession: vi.fn(),
 }));
 const auth = vi.hoisted(() => ({ ensureAuth: vi.fn(), logout: vi.fn() }));
+const gameHost = vi.hoisted(() => vi.fn(() => <div data-testid="game-host" />));
 
 vi.mock("../api", () => ({ api }));
 vi.mock("../chain", () => chain);
@@ -50,6 +52,7 @@ const wallet = vi.hoisted(() => ({
   sendTransaction: vi.fn(),
 }));
 vi.mock("../wallet/WalletProvider", () => ({ useWallet: () => wallet }));
+vi.mock("../game/GameHost", () => ({ GameHost: gameHost }));
 
 const session = {
   accountId: "alice.testnet",
@@ -64,6 +67,7 @@ beforeEach(() => {
   Object.values(auth).forEach((mock) => mock.mockReset());
   chain.loadSession.mockReturnValue(null);
   chain.view.mockResolvedValue(null);
+  api.profiles.mockResolvedValue({ profiles: [] });
   api.config.mockResolvedValue({
     demoMode: false,
     networkId: "testnet",
@@ -108,17 +112,17 @@ async function renderRoute(path: string) {
 }
 
 describe("application router", () => {
-  it("renders the city at / without fetching admin-only data", async () => {
+  it("renders the landing page at / without fetching game or admin data", async () => {
     await renderRoute("/");
-    expect(await screen.findByText("Knowledge / Commercial District")).toBeInTheDocument();
-    expect(api.properties).toHaveBeenCalled();
+    expect(await screen.findByText("Your story.")).toBeInTheDocument();
+    expect(api.properties).not.toHaveBeenCalled();
     expect(api.wallets).not.toHaveBeenCalled();
     expect(api.transactions).not.toHaveBeenCalled();
   });
 
   it("redirects manage to the city when signed out", async () => {
     const router = await renderRoute("/manage");
-    expect(await screen.findByText("Knowledge / Commercial District")).toBeInTheDocument();
+    expect(await screen.findByText("Your story.")).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.pathname).toBe("/"));
   });
 
@@ -128,6 +132,21 @@ describe("application router", () => {
     expect(await screen.findByText("QC balance")).toBeInTheDocument();
     expect(api.jobs).toHaveBeenCalled();
     router.dispose();
+  });
+
+  it("does not mount a game host for manage or admin", async () => {
+    chain.loadSession.mockReturnValue(session);
+    gameHost.mockClear();
+    const manage = await renderRoute("/manage");
+    expect(await screen.findByText("QC balance")).toBeInTheDocument();
+    expect(screen.queryByTestId("game-host")).not.toBeInTheDocument();
+    expect(gameHost).not.toHaveBeenCalled();
+    manage.dispose();
+
+    const admin = await renderRoute("/admin");
+    expect(await screen.findByText("Not authorized")).toBeInTheDocument();
+    expect(gameHost).not.toHaveBeenCalled();
+    admin.dispose();
   });
 
   it("denies admin to players and allows operators", async () => {
@@ -147,6 +166,7 @@ describe("application router", () => {
   });
 
   it("renders valid interiors, rejects invalid identifiers, and shows not-found", async () => {
+    chain.loadSession.mockReturnValue(session);
     const valid = await renderRoute("/interior/library");
     expect(await screen.findByText("Interior: library")).toBeInTheDocument();
     valid.dispose();

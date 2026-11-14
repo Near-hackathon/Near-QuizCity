@@ -17,15 +17,5 @@ export function Component() {
       </section>
     );
   }
-  return (
-    <section className="card">
-      <h1>Interior: {sceneId}</h1>
-      <p className="muted">
-        Interiors arrive with the Phase 6 world server. This route is a validated placeholder.
-      </p>
-      <Link className="link" to="/">
-        Back to the city
-      </Link>
-    </section>
-  );
+  return <h1 className="visually-hidden">Interior: {sceneId}</h1>;
 }

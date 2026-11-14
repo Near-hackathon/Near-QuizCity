@@ -1,0 +1,461 @@
+{
+  "sceneId": "library-interior",
+  "assetVersion": "4",
+  "orientation": "isometric",
+  "renderorder": "right-down",
+  "tilewidth": 32,
+  "tileheight": 16,
+  "width": 24,
+  "height": 18,
+  "infinite": false,
+  "version": "1.10",
+  "layers": [
+    {
+      "id": 1,
+      "name": "ground",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 2,
+      "name": "roads",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 3,
+      "name": "pavement",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 4,
+      "name": "lower_props",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 5,
+      "name": "buildings",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 6,
+      "name": "upper_occlusion",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 7,
+      "name": "collision",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 6001,
+          "x": 0,
+          "y": 0,
+          "width": 24,
+          "height": 1
+        },
+        {
+          "id": 6002,
+          "x": 0,
+          "y": 17,
+          "width": 24,
+          "height": 1
+        },
+        {
+          "id": 6003,
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 18
+        },
+        {
+          "id": 6004,
+          "x": 23,
+          "y": 0,
+          "width": 1,
+          "height": 18
+        },
+        {
+          "id": 6005,
+          "x": 4,
+          "y": 4,
+          "width": 10,
+          "height": 2
+        },
+        {
+          "id": 6006,
+          "x": 4,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6007,
+          "x": 20,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6008,
+          "x": 6,
+          "y": 10,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6009,
+          "x": 7,
+          "y": 11,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6010,
+          "x": 10,
+          "y": 10,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6011,
+          "x": 11,
+          "y": 11,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6012,
+          "x": 16,
+          "y": 9,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6013,
+          "x": 17,
+          "y": 10,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6014,
+          "x": 2,
+          "y": 6,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6015,
+          "x": 2,
+          "y": 9,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6016,
+          "x": 19,
+          "y": 5,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6017,
+          "x": 19,
+          "y": 7,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6018,
+          "x": 20,
+          "y": 14,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6019,
+          "x": 3,
+          "y": 7,
+          "width": 2,
+          "height": 1
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "navigation",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 9,
+      "name": "interactions",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "serverId": "library-spawn",
+          "id": 8001,
+          "kind": "door",
+          "x": 12,
+          "y": 16,
+          "radius": 2,
+          "targetSceneId": "city-district",
+          "targetSpawnId": "library-door-exterior",
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "library-spawn"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 12
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 16
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "targetSceneId",
+              "type": "string",
+              "value": "city-district"
+            },
+            {
+              "name": "targetSpawnId",
+              "type": "string",
+              "value": "library-door-exterior"
+            }
+          ]
+        },
+        {
+          "serverId": "building-library",
+          "id": 8002,
+          "kind": "building",
+          "x": 8,
+          "y": 8,
+          "radius": 2,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "building"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "building-library"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 8
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 8
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "serverId": "professor-kofi",
+          "id": 8003,
+          "kind": "npc",
+          "x": 6,
+          "y": 8,
+          "radius": 2,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "professor-kofi"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 6
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 8
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "spawns",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 9001,
+          "kind": "door",
+          "x": 12,
+          "y": 16,
+          "serverId": "library-spawn",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "library-spawn"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            }
+          ]
+        },
+        {
+          "id": 9002,
+          "kind": "player_default",
+          "x": 12,
+          "y": 12,
+          "serverId": "library-default",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "library-default"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "player_default"
+            }
+          ]
+        },
+        {
+          "id": 9003,
+          "kind": "npc_waypoint",
+          "x": 6,
+          "y": 8,
+          "serverId": "library-desk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "library-desk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9004,
+          "kind": "npc_waypoint",
+          "x": 3,
+          "y": 8,
+          "serverId": "ama-library-desk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "ama-library-desk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9005,
+          "kind": "npc_waypoint",
+          "x": 18,
+          "y": 10,
+          "serverId": "kojo-library-reading",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "kojo-library-reading"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9006,
+          "kind": "npc_waypoint",
+          "x": 15,
+          "y": 12,
+          "serverId": "abena-library-reading",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "abena-library-reading"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

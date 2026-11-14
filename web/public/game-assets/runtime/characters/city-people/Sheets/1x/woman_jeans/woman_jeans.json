@@ -1,0 +1,89 @@
+{
+ "character": "woman_jeans",
+ "title": "Woman in jeans",
+ "scale": 1,
+ "cell": [
+  32,
+  32
+ ],
+ "anchor": [
+  16,
+  28
+ ],
+ "rows": [
+  "s",
+  "sw",
+  "w",
+  "nw",
+  "n",
+  "ne",
+  "e",
+  "se"
+ ],
+ "animations": {
+  "idle": {
+   "image": "woman_jeans_idle.png",
+   "frames": 4,
+   "fps": 6,
+   "loop": true,
+   "size": [
+    128,
+    256
+   ]
+  },
+  "walk": {
+   "image": "woman_jeans_walk.png",
+   "frames": 8,
+   "fps": 10,
+   "loop": true,
+   "size": [
+    256,
+    256
+   ]
+  },
+  "phone": {
+   "image": "woman_jeans_phone.png",
+   "frames": 4,
+   "fps": 4,
+   "loop": true,
+   "size": [
+    128,
+    256
+   ]
+  }
+ },
+ "walk_speed_px_per_frame": {
+  "s": [
+   0.0,
+   0.51
+  ],
+  "sw": [
+   -0.72,
+   0.36
+  ],
+  "w": [
+   -1.02,
+   0.0
+  ],
+  "nw": [
+   -0.72,
+   -0.36
+  ],
+  "n": [
+   0.0,
+   -0.51
+  ],
+  "ne": [
+   0.72,
+   -0.36
+  ],
+  "e": [
+   1.02,
+   0.0
+  ],
+  "se": [
+   0.72,
+   0.36
+  ]
+ }
+}

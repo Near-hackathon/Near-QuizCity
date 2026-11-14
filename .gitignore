@@ -14,9 +14,9 @@ coverage/
 # Third-party source art is kept locally and imported selectively into game-owned assets.
 Gridwright Jam Pack/
 household_*_sprites_v1.0/
+new assets/
 
-# Rebuilt locally from the licensed source packs with `npm run assets:prepare`.
-# Keep the catalogue, documentation, and loader contract tracked; do not repackage the packs.
+# Obsolete generated copies; canonical game files now live in game-assets/runtime.
 web/public/game-assets/generated/
 
 server/demo-accounts.json

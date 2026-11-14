@@ -1,3 +1,4 @@
+mod economy;
 use near_sdk::collections::{UnorderedMap, UnorderedSet};
 use near_sdk::json_types::U128;
 use near_sdk::{env, near, near_bindgen, require, AccountId, PanicOnDefault};
@@ -25,6 +26,13 @@ const EVENT_STANDARD: &str = "quizcity";
 const EVENT_VERSION: &str = "1.0.0";
 const WALLET_PREFIXES: [&str; 4] = ["player:", "npc:", "gov:", "biz:"];
 
+fn serialize_qc<S: near_sdk::serde::Serializer>(
+    amount: &u128,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&amount.to_string())
+}
+
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
 pub struct Player {
@@ -42,6 +50,7 @@ pub struct Property {
     pub x: i32,
     pub y: i32,
     pub owner: String,
+    #[serde(serialize_with = "serialize_qc")]
     pub price: u128,
     pub for_sale: bool,
     pub transfer_count: u64,
@@ -55,6 +64,7 @@ pub struct Business {
     pub owner: AccountId,
     pub property_id: u64,
     pub treasury: String,
+    #[serde(serialize_with = "serialize_qc")]
     pub revenue_total: u128,
 }
 
@@ -95,6 +105,13 @@ pub struct Contract {
     total_issued: u128,
     total_burned: u128,
     tx_count: u64,
+    escrows: UnorderedMap<String, economy::Escrow>,
+    business_sale_prices: UnorderedMap<u64, u128>,
+    reward_day: u64,
+    reward_day_issued: u128,
+    lease_offers: UnorderedMap<u64, economy::LeaseOffer>,
+    leases: UnorderedMap<u64, economy::Lease>,
+    leased_businesses: UnorderedMap<u64, u64>,
 }
 
 fn player_wallet(account: &AccountId) -> String {
@@ -172,6 +189,13 @@ impl Contract {
             total_issued: 0,
             total_burned: 0,
             tx_count: 0,
+            escrows: UnorderedMap::new(collection_prefix(b"esc", nonce)),
+            business_sale_prices: UnorderedMap::new(collection_prefix(b"sale", nonce)),
+            reward_day: 0,
+            reward_day_issued: 0,
+            lease_offers: UnorderedMap::new(collection_prefix(b"lease-offer", nonce)),
+            leases: UnorderedMap::new(collection_prefix(b"lease", nonce)),
+            leased_businesses: UnorderedMap::new(collection_prefix(b"leased-business", nonce)),
         }
     }
 
@@ -421,8 +445,21 @@ impl Contract {
         );
         require!(self.wallets.get(&wallet).is_some(), "unknown reward wallet");
         self.assert_reference_available(&reference);
+        let day = env::block_timestamp() / 86_400_000_000_000;
+        let issued = if self.reward_day == day {
+            self.reward_day_issued
+        } else {
+            0
+        };
+        let next_issued = Self::add_checked(issued, amount.0, "daily reward overflow");
+        require!(
+            next_issued <= economy::DAILY_REWARD_CAP,
+            "daily reward issuance cap exceeded"
+        );
         self.assert_event_capacity(1);
         self.mint(&wallet, amount.0);
+        self.reward_day = day;
+        self.reward_day_issued = next_issued;
         self.mark_reference(&reference);
         self.emit(
             "reward_issued",
@@ -439,6 +476,10 @@ impl Contract {
     pub fn create_wallet(&mut self, wallet: String, initial_balance: U128) -> bool {
         self.assert_operator();
         validate_wallet(&wallet);
+        require!(
+            !wallet.starts_with("gov:escrow."),
+            "escrow wallets require real funding"
+        );
         require!(
             initial_balance.0 <= MAX_INITIAL_BALANCE,
             "initial balance exceeds cap"
@@ -639,9 +680,13 @@ impl Contract {
             "player not registered"
         );
         let property = self.properties.get(&property_id).expect("unknown property");
+        let tenant = self
+            .leases
+            .get(&property_id)
+            .is_some_and(|lease| lease.tenant == account && env::block_timestamp() < lease.ends_at);
         require!(
-            property.owner == player_wallet(&account),
-            "you must own the property to open a business"
+            property.owner == player_wallet(&account) || tenant,
+            "you must own or hold a paid lease on the property to open a business"
         );
         require!(
             self.business_by_property.get(&property_id).is_none(),
@@ -677,6 +722,9 @@ impl Contract {
             },
         );
         self.business_by_property.insert(&property_id, &id);
+        if property.owner != player_wallet(&account) {
+            self.leased_businesses.insert(&id, &property_id);
+        }
         self.emit(
             "permit_burn",
             Some(&buyer_wallet),
@@ -708,6 +756,25 @@ impl Contract {
     }
 
     pub fn pay_service(&mut self, business_id: u64, amount: U128) -> bool {
+        self.pay_service_internal(business_id, amount, None)
+    }
+
+    /// Server-priced orders bind one durable reference to one payment.
+    pub fn supports_orders(&self) -> bool {
+        true
+    }
+
+    pub fn pay_order(&mut self, business_id: u64, amount: U128, reference: String) -> bool {
+        self.pay_service_internal(business_id, amount, Some(reference))
+    }
+
+    fn pay_service_internal(
+        &mut self,
+        business_id: u64,
+        amount: U128,
+        order_reference: Option<String>,
+    ) -> bool {
+        self.assert_business_operating_rights(business_id);
         let account = env::predecessor_account_id();
         require!(
             self.players.get(&account).is_some(),
@@ -725,16 +792,40 @@ impl Contract {
             amount.0,
             "business revenue overflow",
         );
+        if let Some(reference) = &order_reference {
+            validate_reference(reference);
+            let parts: Vec<&str> = reference.split(':').collect();
+            require!(
+                parts.len() == 5 && parts[0] == "order" && parts[1].len() == 36,
+                "invalid order reference"
+            );
+            let buyer_tag: String = env::sha256(account.as_bytes())
+                .iter()
+                .take(16)
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            let expected = format!("order:{}:{business_id}:{}:{buyer_tag}", parts[1], amount.0);
+            require!(
+                *reference == expected,
+                "order reference does not match payer, business or amount"
+            );
+            self.assert_reference_available(reference);
+        }
         self.assert_event_capacity(1);
         self.transfer_internal(&from, &business.treasury, amount.0);
         business.revenue_total = new_revenue;
         self.businesses.insert(&business_id, &business);
+        if let Some(reference) = &order_reference {
+            self.mark_reference(reference);
+        }
+        let reference =
+            order_reference.unwrap_or_else(|| format!("service:{business_id}:{}", self.tx_count));
         self.emit(
             "service_paid",
             Some(&from),
             Some(&business.treasury),
             amount.0,
-            Some(&format!("service:{business_id}:{}", self.tx_count)),
+            Some(&reference),
             &format!("business:{business_id}"),
             serde_json::json!({ "business_id": business_id }),
         );
@@ -781,12 +872,14 @@ impl Contract {
             new_owner != account,
             "business already owned by this player"
         );
+        self.assert_business_transfer_recipient(business_id, &new_owner);
         let previous = business.owner.clone();
         let previous_wallet = player_wallet(&previous);
         let new_wallet = player_wallet(&new_owner);
         self.assert_event_capacity(1);
         business.owner = new_owner.clone();
         self.businesses.insert(&business_id, &business);
+        self.business_sale_prices.remove(&business_id);
         let reference = self.next_admin_reference(&format!("business:{business_id}:transfer"));
         self.emit(
             "business_transferred",
@@ -830,8 +923,33 @@ impl Contract {
             "unknown employee wallet"
         );
         self.assert_reference_available(&reference);
+        let escrow_update = employer_wallet.strip_prefix("gov:escrow.").map(|id| {
+            let mut escrow = self
+                .escrows
+                .get(&id.to_string())
+                .expect("unknown job reservation");
+            require!(
+                ["job", "public_contract"].contains(&escrow.purpose.as_str()),
+                "not a job reservation"
+            );
+            require!(
+                employee_wallet.starts_with("player:"),
+                "employee wallet required"
+            );
+            if let Some(beneficiary) = &escrow.beneficiary {
+                require!(*beneficiary == employee_wallet, "wrong employee");
+            }
+            escrow.remaining = escrow
+                .remaining
+                .checked_sub(amount.0)
+                .expect("job reservation exhausted");
+            (id.to_string(), escrow)
+        });
         self.assert_event_capacity(1);
         self.transfer_internal(&employer_wallet, &employee_wallet, amount.0);
+        if let Some((id, escrow)) = escrow_update {
+            self.escrows.insert(&id, &escrow);
+        }
         self.mark_reference(&reference);
         self.emit(
             "job_reward",
@@ -933,6 +1051,13 @@ impl Contract {
         self.businesses.clear();
         self.business_by_property.clear();
         self.processed_references.clear();
+        self.lease_offers.clear();
+        self.leases.clear();
+        self.leased_businesses.clear();
+        self.escrows.clear();
+        self.business_sale_prices.clear();
+        self.reward_day = 0;
+        self.reward_day_issued = 0;
         self.next_property_id = 1;
         self.next_business_id = 1;
         // Demo reset intentionally starts a fresh event sequence; no capacity
@@ -1056,11 +1181,11 @@ mod tests {
     use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::str::FromStr;
 
-    fn account(name: &str) -> AccountId {
+    pub(super) fn account(name: &str) -> AccountId {
         AccountId::from_str(name).unwrap()
     }
 
-    fn as_account(name: &str) {
+    pub(super) fn as_account(name: &str) {
         let context = VMContextBuilder::new()
             .current_account_id(account("quizcity.testnet"))
             .predecessor_account_id(account(name))
@@ -1068,7 +1193,7 @@ mod tests {
         testing_env!(context);
     }
 
-    fn setup() -> Contract {
+    pub(super) fn setup() -> Contract {
         as_account("quizcity.testnet");
         let mut contract = Contract::new();
         contract.create_wallet("npc:professor-kofi".to_string(), U128(1_000));
@@ -1084,7 +1209,7 @@ mod tests {
         contract
     }
 
-    fn expect_panic(f: impl FnOnce()) {
+    pub(super) fn expect_panic(f: impl FnOnce()) {
         let result = catch_unwind(AssertUnwindSafe(f));
         assert!(result.is_err(), "expected a panic");
     }
@@ -1230,6 +1355,158 @@ mod tests {
         contract.list_property(1, U128(400));
         as_account("alice.testnet");
         contract.buy_property(1);
+    }
+
+    fn test_order_reference(buyer: &str, business: u64, amount: u128) -> String {
+        let tag: String = env::sha256(buyer.as_bytes())
+            .iter()
+            .take(16)
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        format!("order:00000000-0000-4000-8000-000000000001:{business}:{amount}:{tag}")
+    }
+
+    #[test]
+    fn order_payments_bind_reference_and_preserve_state_on_replay_or_rejection() {
+        let mut c = setup();
+        as_account("alice.testnet");
+        c.register_player("alice".into());
+        c.claim_starter();
+        c.buy_property(1);
+        c.create_business(1, "Bookshop".into());
+        as_account("bob.testnet");
+        c.register_player("bob".into());
+        c.claim_starter();
+        let state = |c: &Contract| {
+            (
+                c.get_balance("player:bob.testnet".into()).0,
+                c.get_balance("biz:1".into()).0,
+                c.get_business(1).unwrap().revenue_total,
+                c.tx_count,
+                c.event_seq,
+                c.total_issued,
+                c.total_burned,
+            )
+        };
+        for (amount, reference) in [
+            (0, "order:zero"),
+            (501, "order:insufficient"),
+            (MAX_SERVICE_PAYMENT + 1, "order:cap"),
+            (1, "invalid-reference"),
+        ] {
+            let before = state(&c);
+            expect_panic(|| {
+                c.pay_order(
+                    1,
+                    U128(amount),
+                    if reference == "invalid-reference" {
+                        reference.into()
+                    } else {
+                        test_order_reference("bob.testnet", 1, amount)
+                    },
+                );
+            });
+            assert_eq!(state(&c), before);
+            assert!(!c.is_reference_processed(reference.into()));
+        }
+        c.pay_order(1, U128(20), test_order_reference("bob.testnet", 1, 20));
+        assert_eq!(
+            event_data(&last_event())["reference"],
+            test_order_reference("bob.testnet", 1, 20)
+        );
+        assert_eq!(
+            event_data(&last_event())["wallet_from"],
+            "player:bob.testnet"
+        );
+        assert_eq!(event_data(&last_event())["wallet_to"], "biz:1");
+        let quote = test_order_reference("bob.testnet", 1, 10);
+        let before = state(&c);
+        expect_panic(|| {
+            c.pay_order(1, U128(11), quote.clone());
+        });
+        assert_eq!(state(&c), before);
+        as_account("alice.testnet");
+        let owner_balance = c.get_balance("player:alice.testnet".into()).0;
+        expect_panic(|| {
+            c.pay_order(1, U128(10), quote.clone());
+        });
+        assert_eq!(
+            c.get_balance("player:alice.testnet".into()).0,
+            owner_balance
+        );
+        assert_eq!(state(&c), before);
+        assert!(!c.is_reference_processed(quote));
+        as_account("bob.testnet");
+        let before = state(&c);
+        expect_panic(|| {
+            c.pay_order(1, U128(20), test_order_reference("bob.testnet", 1, 20));
+        });
+        assert_eq!(state(&c), before);
+        as_account("mallory.testnet");
+        expect_panic(|| {
+            c.pay_order(1, U128(1), test_order_reference("bob.testnet", 1, 1));
+        });
+        assert_eq!(state(&c), before);
+        as_account("bob.testnet");
+        c.tx_count = u64::MAX;
+        let before = state(&c);
+        expect_panic(|| {
+            c.pay_order(1, U128(1), test_order_reference("bob.testnet", 1, 1));
+        });
+        assert_eq!(state(&c), before);
+        assert!(!c.is_reference_processed(test_order_reference("bob.testnet", 1, 1)));
+    }
+    #[test]
+    fn registry_views_serialize_qc_as_exact_decimal_strings() {
+        let mut c = setup();
+        as_account("alice.testnet");
+        c.register_player("alice".into());
+        c.claim_starter();
+        c.buy_property(1);
+        c.create_business(1, "Shop".into());
+        let mut business = c.get_business(1).unwrap();
+        business.revenue_total = u128::MAX;
+        let view = serde_json::to_value(&business).unwrap();
+        assert_eq!(view["revenue_total"], u128::MAX.to_string());
+        let bytes = near_sdk::borsh::to_vec(&business).unwrap();
+        let restored: Business = near_sdk::borsh::from_slice(&bytes).unwrap();
+        assert_eq!(restored.revenue_total, u128::MAX);
+        let mut property = c.get_property(1).unwrap();
+        property.price = 9_007_199_254_740_993;
+        assert_eq!(
+            serde_json::to_value(property).unwrap()["price"],
+            "9007199254740993"
+        );
+    }
+
+    #[test]
+    fn order_payment_accepts_exact_service_cap() {
+        let mut c = setup();
+        as_account("alice.testnet");
+        c.register_player("alice".into());
+        c.claim_starter();
+        c.buy_property(1);
+        c.create_business(1, "Shop".into());
+        as_account("bob.testnet");
+        c.register_player("bob".into());
+        c.claim_starter();
+        as_account("quizcity.testnet");
+        c.create_wallet("npc:order-funder".into(), U128(10000));
+        c.pay_job(
+            "npc:order-funder".into(),
+            "player:bob.testnet".into(),
+            U128(10000),
+            "job:order-funding".into(),
+        );
+        as_account("bob.testnet");
+        c.pay_order(
+            1,
+            U128(MAX_SERVICE_PAYMENT),
+            test_order_reference("bob.testnet", 1, MAX_SERVICE_PAYMENT),
+        );
+        assert_eq!(c.get_balance("biz:1".into()).0, MAX_SERVICE_PAYMENT);
+        assert_eq!(c.get_balance("player:bob.testnet".into()).0, 500);
+        assert!(c.supports_orders());
     }
 
     #[test]

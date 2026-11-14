@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "phase7-v1",
+  "sourcePolicy": "Canonical curated game assets; original download packs are not required.",
+  "rendering": {
+    "projection": "isometric-2-to-1",
+    "baseScale": "1x",
+    "tileDiamond": [
+      32,
+      16
+    ],
+    "characterCell": [
+      32,
+      32
+    ],
+    "textureFilter": "nearest",
+    "mipmaps": false,
+    "notes": "Use Gridwright 1x assets as the canonical Phaser world scale. Scale the canvas by whole numbers only."
+  },
+  "groups": [
+    {
+      "id": "gridwright-city",
+      "tier": "core",
+      "purpose": "Exterior ground, roads, pavement, modular buildings, street props, vehicles, and shadows.",
+      "target": "world/city",
+      "credit": "Art by Gridwright — https://gridwrightstudio.itch.io",
+      "creditRequired": false
+    },
+    {
+      "id": "gridwright-interiors",
+      "tier": "core",
+      "purpose": "Library, university, apartment, cafe, shop, and quiz-centre greybox interiors.",
+      "target": "world/interiors",
+      "credit": "Art by Gridwright — https://gridwrightstudio.itch.io",
+      "creditRequired": false
+    },
+    {
+      "id": "gridwright-city-people",
+      "tier": "core",
+      "purpose": "Player/NPC placeholder characters with idle, walk, and phone animations in eight directions.",
+      "target": "characters/city-people",
+      "credit": "Art by Gridwright — https://gridwrightstudio.itch.io",
+      "creditRequired": false
+    },
+    {
+      "id": "knowledge-visual-slice",
+      "tier": "core",
+      "purpose": "Owner-authorised first campus street and library interior visual prototype.",
+      "target": "world/knowledge",
+      "credit": "Building/campus/furniture art: supplied by the project owner; creator attribution pending source identification.",
+      "creditRequired": false
+    }
+  ],
+  "files": [
+    {
+      "group": "gridwright-city",
+      "path": "world/city/LICENSE.txt",
+      "bytes": 837,
+      "sha256": "a4018a47ee6cae7203a97f540aff2a07eb5905d8ad9cab21d2d2221dc4ec0d3c"
+    },
+    {
+      "group": "gridwright-city",
+      "path": "world/city/Sheets/street_1x.json",
+      "bytes": 831,
+      "sha256": "55fcbb2f14f34ff105696157b309fee05e51258863a23cc8f133e45c5cf0c467"
+    },
+    {
+      "group": "gridwright-city",
+      "path": "world/city/Sheets/street_1x.png",
+      "bytes": 2323,
+      "sha256": "811d45244bc53ddf979192f51970ebc1186b2e289fb5ab861691191ab94a30e9",
+      "dimensions": [
+        512,
+        48
+      ]
+    },
+    {
+      "group": "gridwright-interiors",
+      "path": "world/interiors/LICENSE.txt",
+      "bytes": 842,
+      "sha256": "2eb9b5d873e4373f3a55ed499845546fa1947a29f510717a526a4e84504e5ea2"
+    },
+    {
+      "group": "gridwright-interiors",
+      "path": "world/interiors/Sheets/living_1x.json",
+      "bytes": 372,
+      "sha256": "1003362181772dbd85e378b60708ad81b51a2b06e8f87c3d232b70949bad8a68"
+    },
+    {
+      "group": "gridwright-interiors",
+      "path": "world/interiors/Sheets/living_1x.png",
+      "bytes": 4016,
+      "sha256": "8d2ca89f56b03d66420fcc18cc2ec81f4299d80713a33677d1af1d96f835d8bb",
+      "dimensions": [
+        512,
+        64
+      ]
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/LICENSE.txt",
+      "bytes": 925,
+      "sha256": "888a63ef304c1262100494116c3f2311f18b38fba53d26e8a0dd10d6988f4f3d"
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/Sheets/1x/man_tee/man_tee.json",
+      "bytes": 898,
+      "sha256": "abffdcd10e2db568a7b07e12f3e0d6a21fb1c8390dca1f8480d988e77357f2ba"
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/Sheets/1x/man_tee/man_tee_idle.png",
+      "bytes": 5730,
+      "sha256": "d115941a6cca3796005d3ceed9b4bcb9e764489cdd054adc5d59d32d0a6dc470",
+      "dimensions": [
+        128,
+        256
+      ]
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/Sheets/1x/man_tee/man_tee_phone.png",
+      "bytes": 5683,
+      "sha256": "47d4ba165293bf328281c45f9bcc801325bc1be9e56ea263932cc1c5352bca04",
+      "dimensions": [
+        128,
+        256
+      ]
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/Sheets/1x/man_tee/man_tee_walk.png",
+      "bytes": 10677,
+      "sha256": "81dfa94bf42427665eb67f9f5c4f0797a36a4ba4cc0dec1aafa3b1a3a3ad8989",
+      "dimensions": [
+        256,
+        256
+      ]
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/Sheets/1x/woman_jeans/woman_jeans.json",
+      "bytes": 912,
+      "sha256": "21ccc533001e3fb84b224c1f82b7abb6a13c1a051a48c806fb99b1020029a0e5"
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/Sheets/1x/woman_jeans/woman_jeans_idle.png",
+      "bytes": 6025,
+      "sha256": "8bd2c6104aaab5d1319474d7ac9f691144c3597336ec7d1b0eb4b4712f125dd0",
+      "dimensions": [
+        128,
+        256
+      ]
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/Sheets/1x/woman_jeans/woman_jeans_phone.png",
+      "bytes": 5598,
+      "sha256": "b08c30e399f6ca3b0af2a16142d4a887a9d79c42b1eabbfa1f27825ea5a17a93",
+      "dimensions": [
+        128,
+        256
+      ]
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/Sheets/1x/woman_jeans/woman_jeans_walk.png",
+      "bytes": 11460,
+      "sha256": "294d23aee26c3b5e471b79d401eb299bdff1de65dd0b4990430841ec55acb650",
+      "dimensions": [
+        256,
+        256
+      ]
+    },
+    {
+      "group": "gridwright-city-people",
+      "path": "characters/city-people/characters.json",
+      "bytes": 3086,
+      "sha256": "fa6e0f1ad48c5b8363828648fcfe806b86d17b43db044a6f7d6cc195e82d930e"
+    },
+    {
+      "group": "knowledge-visual-slice",
+      "path": "world/knowledge/buildings.png",
+      "bytes": 604921,
+      "sha256": "df77f6b7c591ff36f9a570b5a389162d73e8094de12cf4748af213d2481bcd04",
+      "dimensions": [
+        2048,
+        3264
+      ]
+    },
+    {
+      "group": "knowledge-visual-slice",
+      "path": "world/knowledge/campus.png",
+      "bytes": 273240,
+      "sha256": "d0bddae2fb8b6710e0969590afc737f07be71acae8ef314fcbce09caee04e7b0",
+      "dimensions": [
+        1536,
+        704
+      ]
+    },
+    {
+      "group": "knowledge-visual-slice",
+      "path": "world/knowledge/furniture.png",
+      "bytes": 43558,
+      "sha256": "a2be28f6a4b0ee8fba3202bd77fcadcc71219681d32dcacf9e517b9bf2389915",
+      "dimensions": [
+        464,
+        720
+      ]
+    }
+  ]
+}

@@ -79,6 +79,53 @@ afterEach(() => {
 });
 
 describe("world transport", () => {
+  it("accepts a matching resume barrier and rejects a mismatched ready stream", () => {
+    const transport = createWorldTransport({ apiBase: "http://localhost:8787", socketFactory: factory });
+    const statuses: string[] = [];
+    transport.onStatus((status) => statuses.push(status));
+    transport.connect("city-district", "5");
+    sockets[0].open();
+    sockets[0].deliver({
+      type: "world.ready",
+      streamId: "scene:city-district",
+      sequence: "5",
+      lastClientSequence: "0",
+    });
+    expect(statuses.at(-1)).toBe("online");
+    sockets[0].deliver({
+      type: "world.ready",
+      streamId: "scene:library-interior",
+      sequence: "5",
+      lastClientSequence: "0",
+    });
+    expect(sockets[0].closed?.reason).toBe("invalid ready barrier");
+    transport.disconnect();
+  });
+  it("does not reuse durable command IDs when a transport is recreated after navigation", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const transport = createWorldTransport({ apiBase: "http://localhost:8787", socketFactory: factory });
+      transport.connect("city-district", null);
+      const socket = sockets.at(-1)!;
+      socket.open();
+      socket.deliver(bootstrap);
+      socket.deliver({
+        type: "world.ready",
+        streamId: bootstrap.streamId,
+        sequence: "5",
+        lastClientSequence: "20",
+      });
+      const move = transport.sendMove(33, 24);
+      const message = JSON.parse(socket.sent.at(-1)!);
+      ids.push(message.messageId);
+      expect(message.clientSequence).toBe("21");
+      socket.deliver({ type: "world.ack", messageId: message.messageId, sequence: "5" });
+      await move;
+      transport.disconnect();
+    }
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+
   it("derives the websocket URL, subscribes on open, and applies bootstrap", () => {
     const transport = createWorldTransport({ apiBase: "https://api.example.com", socketFactory: factory });
     const statuses: string[] = [];
@@ -97,6 +144,13 @@ describe("world transport", () => {
     sockets[0].deliver(bootstrap);
     expect(transport.lastSequence()).toBe("5");
     expect(statuses).toContain("connecting");
+    expect(statuses).not.toContain("online");
+    sockets[0].deliver({
+      type: "world.ready",
+      streamId: bootstrap.streamId,
+      sequence: "5",
+      lastClientSequence: "0",
+    });
     expect(statuses).toContain("online");
     transport.disconnect();
   });

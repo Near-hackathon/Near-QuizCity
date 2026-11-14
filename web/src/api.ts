@@ -1,8 +1,33 @@
+import { PublicMatchesResponse, MatchResponse, MatchesResponse, QuizMatch } from "@quiz-city/protocol";
+import { forgetManagedProof } from "./wallet/managed-intents";
+import {
+  CityOverview,
+  CityHealth,
+  CityOperationResponse,
+  CityRow,
+  type CityCommandType,
+  type QuizDraftInput,
+} from "@quiz-city/protocol";
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
 const CSRF_KEY = "quizcity.csrf";
 
 import type { Static, TSchema } from "@sinclair/typebox";
 import {
+  CommerceCapabilities,
+  WithdrawResponse,
+  CatalogueResponse,
+  ShopItem,
+  OrdersResponse,
+  OrderResponse,
+  ResearchTaskResponse,
+  ResearchSubmitResponse,
+  LinkProfileResponse,
+  ProfilesResponse,
+  EnterProfileResponse,
+  ResidentProfile,
+  ManagedWalletStatus,
+  ManagedWalletSent,
+  OnboardingResponse,
   BusinessResponse,
   BusinessesPage,
   BuyPropertyResponse,
@@ -38,6 +63,8 @@ import {
   type WalletItem,
 } from "@quiz-city/protocol";
 
+export type FriendMatch = Static<typeof QuizMatch>;
+export type Resident = Static<typeof ResidentProfile>;
 export type Property = Static<typeof PropertyItem>;
 export type Wallet = Static<typeof WalletItem>;
 export type Tx = Static<typeof TransactionItem>;
@@ -60,6 +87,16 @@ export type Page<T> = { items: T[]; nextCursor: string | null };
 export type ApiRequestOptions = {
   signal?: AbortSignal;
 };
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 function pageQuery(options: { cursor?: string | null; limit?: number } = {}): string {
   const params = new URLSearchParams();
@@ -167,15 +204,26 @@ async function request<T extends TSchema>(
   });
   if (!res.ok) {
     let message = `${path} failed: ${res.status}`;
+    let code: string | undefined;
     try {
       const body = await res.json();
       if (body?.error?.message) message = body.error.message;
+      if (typeof body?.error?.code === "string") code = body.error.code;
     } catch {
       // keep status message
     }
-    throw new Error(message);
+    throw new ApiError(message, res.status, code);
   }
-  return parse(schema, await res.json(), path);
+  const result = parse(schema, await res.json(), path);
+  if (init.method === "POST" && typeof init.body === "string") {
+    try {
+      const body = JSON.parse(init.body);
+      if (typeof body.txHash === "string") forgetManagedProof(body.txHash);
+    } catch {
+      /* no proof in this command */
+    }
+  }
+  return result;
 }
 
 async function get<T extends TSchema>(path: string, schema: T, options: ApiRequestOptions = {}) {
@@ -207,6 +255,51 @@ async function page<T extends TSchema>(path: string, schema: T, options: PageOpt
 }
 
 export const api = {
+  publicQuizRooms: (query: { q?: string; stake?: string } = {}) => {
+    const p = new URLSearchParams(query);
+    return get(`/v1/quiz-matches/public?${p}`, PublicMatchesResponse);
+  },
+  findQuizOpponent: (requestId: string, stake: string) =>
+    post("/v1/quiz-matches/search", { requestId, stake }, MatchResponse),
+  joinPublicQuizRoom: (id: string, requestId: string) =>
+    post(`/v1/quiz-matches/public/${id}/join`, { requestId }, MatchResponse),
+  quizMatches: () => get("/v1/quiz-matches", MatchesResponse),
+  quizMatch: (id: string) => get(`/v1/quiz-matches/${id}`, MatchResponse),
+  createQuizMatch: (requestId: string, stake: string, visibility?: "private" | "public") =>
+    post("/v1/quiz-matches", { requestId, stake, ...(visibility ? { visibility } : {}) }, MatchResponse),
+  joinQuizMatch: (requestId: string, code: string) =>
+    post("/v1/quiz-matches/join", { requestId, code }, MatchResponse),
+  submitQuizMatch: (id: string, answers: Record<string, number>) =>
+    post(`/v1/quiz-matches/${id}/submit`, { answers }, MatchResponse),
+  cancelQuizMatch: (id: string) => post(`/v1/quiz-matches/${id}/cancel`, {}, MatchResponse),
+  confirmQuizMatch: (id: string, txHash: string) =>
+    post(`/v1/quiz-matches/${id}/confirm`, { txHash }, MatchResponse),
+  cityOverview: () => get("/v1/city/overview", CityOverview),
+  cityHealth: (diagnostics = false) =>
+    get(diagnostics ? "/v1/city/diagnostics" : "/v1/city/health", CityHealth),
+  cityModeration: () => get("/v1/city/moderation", CityRow),
+  cityCommand: (input: CityCommandType) => post("/v1/city/commands", input, CityOperationResponse),
+  cityExecute: (id: string) =>
+    post(`/v1/city/operations/${encodeURIComponent(id)}/execute`, {}, CityOperationResponse),
+  cityConfirm: (id: string, txHash: string) =>
+    post(`/v1/city/operations/${id}/confirm`, { txHash }, CityOperationResponse),
+  shopHours: (id: string, input: { openMinute: number; closeMinute: number; acceptingCustomers: boolean }) =>
+    post(`/v1/city/shops/${id}/hours`, input, CityRow),
+  rentOffer: (id: string, input: { rent: string; periodDays: 7 | 30; active: boolean }, txHash: string) =>
+    post(`/v1/city/property/${id}/rent-offer`, { ...input, txHash }, CityRow),
+  reviewWork: (id: string, decision: string, note: string, resolve = false) =>
+    post(`/v1/city/jobs/${id}/${resolve ? "resolve" : "review"}`, { decision, note }, CityRow),
+  createQuizDraft: (input: QuizDraftInput) => post("/v1/city/quizzes/drafts", input, CityRow),
+  reviewQuizDraft: (id: string, decision: string, note: string) =>
+    post(`/v1/city/quizzes/drafts/${id}/review`, { decision, note }, CityRow),
+  reportQuiz: (id: string, reason: string) =>
+    post(`/v1/city/quizzes/drafts/${id}/report`, { reason }, CityRow),
+  resolveReport: (id: string, reason: string) => post(`/v1/city/reports/${id}/resolve`, { reason }, CityRow),
+  closeQuiz: (id: string, reason: string) =>
+    post(`/v1/city/quizzes/${id}/close`, { reason }, CityOperationResponse),
+  setBudget: (id: string, ceiling: string) => post(`/v1/city/budgets/${id}`, { ceiling }, CityRow),
+  marketConfirm: (id: string, method: string, args: Record<string, unknown>, txHash: string) =>
+    post(`/v1/city/market/${id}/confirm`, { method, args, txHash }, CityRow),
   config: async () => {
     const config = await get("/v1/config", ConfigResponse);
     assertProtocolCompatible(config.protocolVersion);
@@ -219,6 +312,38 @@ export const api = {
       storeCsrf(result.csrfToken);
       return result;
     }),
+  linkProfileWallet: (profileId?: string) =>
+    post("/v1/profiles/link-wallet", profileId ? { profileId } : {}, LinkProfileResponse),
+  managedWalletStatus: (id: string, options: ApiRequestOptions = {}) =>
+    get(`/v1/profiles/${encodeURIComponent(id)}/wallet`, ManagedWalletStatus, options),
+  retryManagedWallet: (id: string) =>
+    post(`/v1/profiles/${encodeURIComponent(id)}/wallet/retry`, {}, ManagedWalletStatus),
+  managedTransaction: (input: { requestId: string; method: string; args: Record<string, unknown> }) =>
+    post("/v1/wallet/transactions", input, ManagedWalletSent),
+  downloadManagedBackup: async (id: string) => {
+    const res = await fetch(`${API}/v1/profiles/${encodeURIComponent(id)}/wallet/backup`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json", "x-csrf-token": csrfToken() ?? "" },
+      body: JSON.stringify({ confirm: true }),
+    });
+    if (!res.ok)
+      throw new ApiError("The wallet backup could not be downloaded. Sign in again and retry.", res.status);
+    return res.blob();
+  },
+  prepareProfileDevice: () => post("/v1/profiles/device", {}, OkResponse),
+  profiles: () => get("/v1/profiles", ProfilesResponse),
+  createProfile: (username: string, firstName: string) =>
+    post("/v1/profiles", { username, firstName }, EnterProfileResponse).then((result) => {
+      storeCsrf(result.csrfToken);
+      return result;
+    }),
+  enterProfile: (id: string) =>
+    post("/v1/profiles/enter", { id }, EnterProfileResponse).then((result) => {
+      storeCsrf(result.csrfToken);
+      return result;
+    }),
+  finishOnboarding: (answers: number[]) => post("/v1/profiles/onboarding", { answers }, OnboardingResponse),
   authMe: () => get("/v1/auth/me", MeResponse),
   clearCsrf: () => {
     try {
@@ -251,6 +376,22 @@ export const api = {
     page("/v1/businesses", BusinessesPage, options).then((result) => result.items),
   quizzes: (options: ApiRequestOptions = {}) =>
     page("/v1/quizzes", QuizzesPage, options).then((result) => result.items),
+  commerceCapabilities: () => get("/v1/commerce/capabilities", CommerceCapabilities),
+  withdrawBusiness: (id: string, amount: string, txHash: string) =>
+    post(`/v1/businesses/${id}/withdraw`, { amount, txHash }, WithdrawResponse),
+  catalogue: (id: string) => get(`/v1/businesses/${id}/catalogue`, CatalogueResponse),
+  createItem: (id: string, input: { sku: string; name: string; unitPrice: string; quantity: number }) =>
+    post(`/v1/businesses/${id}/catalogue`, input, ShopItem),
+  myOrders: () => get("/v1/orders", OrdersResponse),
+  reserveOrder: (itemId: string, quantity: number) => post("/v1/orders", { itemId, quantity }, OrderResponse),
+  confirmOrder: (id: string, txHash: string) => post(`/v1/orders/${id}/confirm`, { txHash }, OrderResponse),
+  deliverStock: (id: string, quantity: number, reference: string) =>
+    post(`/v1/items/${id}/deliveries`, { quantity, reference }, ShopItem),
+  itemSettings: (id: string, unitPrice: string, active: boolean) =>
+    post(`/v1/items/${id}/settings`, { unitPrice, active }, ShopItem),
+  researchTask: (id: string) => get(`/v1/jobs/${id}/task`, ResearchTaskResponse),
+  submitResearch: (id: string, answers: Record<string, number>, summary: string) =>
+    post(`/v1/jobs/${id}/task`, { answers, summary }, ResearchSubmitResponse),
   acceptJob: (id: string) => post(`/v1/jobs/${id}/accept`, {}, JobResponse),
   submitJob: (id: string, deliverable: string) => post(`/v1/jobs/${id}/submit`, { deliverable }, JobResponse),
   verifyJob: (id: string, notes?: string) => post(`/v1/jobs/${id}/verify`, { notes }, JobResponse),

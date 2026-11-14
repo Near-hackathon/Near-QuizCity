@@ -1,0 +1,389 @@
+{
+  "sceneId": "cafe-interior",
+  "assetVersion": "4",
+  "orientation": "isometric",
+  "renderorder": "right-down",
+  "tilewidth": 32,
+  "tileheight": 16,
+  "width": 16,
+  "height": 12,
+  "infinite": false,
+  "version": "1.10",
+  "layers": [
+    {
+      "id": 1,
+      "name": "ground",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 2,
+      "name": "roads",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 3,
+      "name": "pavement",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 4,
+      "name": "lower_props",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 5,
+      "name": "buildings",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 6,
+      "name": "upper_occlusion",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 7,
+      "name": "collision",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 6001,
+          "x": 0,
+          "y": 0,
+          "width": 16,
+          "height": 1
+        },
+        {
+          "id": 6002,
+          "x": 0,
+          "y": 11,
+          "width": 16,
+          "height": 1
+        },
+        {
+          "id": 6003,
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 12
+        },
+        {
+          "id": 6004,
+          "x": 15,
+          "y": 0,
+          "width": 1,
+          "height": 12
+        },
+        {
+          "id": 6005,
+          "x": 4,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6006,
+          "x": 12,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6007,
+          "x": 3,
+          "y": 5,
+          "width": 4,
+          "height": 1
+        },
+        {
+          "id": 6008,
+          "x": 3,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6009,
+          "x": 10,
+          "y": 4,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6010,
+          "x": 11,
+          "y": 5,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6011,
+          "x": 10,
+          "y": 7,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6012,
+          "x": 11,
+          "y": 8,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6013,
+          "x": 4,
+          "y": 8,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6014,
+          "x": 5,
+          "y": 9,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6015,
+          "x": 13,
+          "y": 9,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6016,
+          "x": 2,
+          "y": 2,
+          "width": 1,
+          "height": 1
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "navigation",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 9,
+      "name": "interactions",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "serverId": "cafe-spawn",
+          "id": 8001,
+          "kind": "door",
+          "x": 8,
+          "y": 10,
+          "radius": 2,
+          "targetSceneId": "city-district",
+          "targetSpawnId": "cafe-door-exterior",
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "cafe-spawn"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 8
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 10
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "targetSceneId",
+              "type": "string",
+              "value": "city-district"
+            },
+            {
+              "name": "targetSpawnId",
+              "type": "string",
+              "value": "cafe-door-exterior"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "spawns",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 9001,
+          "kind": "door",
+          "x": 8,
+          "y": 10,
+          "serverId": "cafe-spawn",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "cafe-spawn"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            }
+          ]
+        },
+        {
+          "id": 9002,
+          "kind": "player_default",
+          "x": 8,
+          "y": 7,
+          "serverId": "cafe-default",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "cafe-default"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "player_default"
+            }
+          ]
+        },
+        {
+          "id": 9003,
+          "kind": "npc_waypoint",
+          "x": 8,
+          "y": 5,
+          "serverId": "cafe-table",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "cafe-table"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9004,
+          "kind": "npc_waypoint",
+          "x": 5,
+          "y": 4,
+          "serverId": "esi-cafe-counter",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "esi-cafe-counter"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9005,
+          "kind": "npc_waypoint",
+          "x": 9,
+          "y": 5,
+          "serverId": "kojo-cafe-table",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "kojo-cafe-table"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9006,
+          "kind": "npc_waypoint",
+          "x": 12,
+          "y": 8,
+          "serverId": "abena-cafe-table",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "abena-cafe-table"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        },
+        {
+          "id": 9007,
+          "kind": "npc_waypoint",
+          "x": 7,
+          "y": 7,
+          "serverId": "ama-cafe-table",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "ama-cafe-table"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

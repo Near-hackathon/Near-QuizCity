@@ -383,3 +383,101 @@ test("business creation and transfer wallet relationships are enforced", () => {
     /new_owner_wallet must be player:bob.testnet/,
   );
 });
+
+test("city escrow and lease events validate monetary direction, purpose and exact metadata", () => {
+  const id = "00000000-0000-4000-8000-000000000001",
+    wallet = `gov:escrow.${id}`;
+  const funded = {
+    wallet_from: "biz:1",
+    wallet_to: wallet,
+    amount: "40",
+    reference: `fund:${id}`,
+    entity_id: `escrow:${id}`,
+    escrow_id: id,
+    purpose: "job",
+    owner: "alice.testnet",
+    beneficiary: null,
+  };
+  assert.doesNotThrow(() => validateEvent(event("escrow_funded", funded)));
+  for (const change of [
+    { escrow_id: "wrong-id" },
+    { purpose: "unlimited_mint" },
+    { wallet_to: "gov:other" },
+    { entity_id: "escrow:other" },
+    { owner: null },
+    { beneficiary: 4 },
+  ])
+    assert.throws(() => validateEvent(event("escrow_funded", { ...funded, ...change })));
+  assert.doesNotThrow(() => validateEvent(event("escrow_sponsored", { ...funded, purpose: "prize" })));
+  assert.throws(() => validateEvent(event("escrow_sponsored", { ...funded, wallet_to: "biz:2" })));
+  for (const name of ["escrow_released", "escrow_refunded"]) {
+    const released = { ...funded, wallet_from: wallet, wallet_to: "biz:1" };
+    assert.doesNotThrow(() => validateEvent(event(name, released)));
+    assert.throws(() => validateEvent(event(name, { ...released, wallet_from: "gov:other" })));
+  }
+  const registry = {
+    wallet_from: null,
+    wallet_to: null,
+    amount: "0",
+    reference: "lease:1",
+    entity_id: "property:1",
+    property_id: 1,
+    owner_wallet: "player:alice.testnet",
+    rent: "20",
+    period_days: 7,
+    tenant: "bob.testnet",
+    ends_at: "9007199254740993",
+    grace_ends_at: "9007199254740994",
+  };
+  assert.doesNotThrow(() => validateEvent(event("lease_offered", registry)));
+  assert.doesNotThrow(() => validateEvent(event("lease_started", registry)));
+  for (const period_days of [0, 1, 31])
+    assert.throws(() => validateEvent(event("lease_offered", { ...registry, period_days })));
+  assert.throws(() =>
+    validateEvent(event("lease_started", { ...registry, grace_ends_at: registry.ends_at })),
+  );
+  assert.throws(() => validateEvent(event("lease_started", { ...registry, ends_at: 9007199254740992 })));
+  assert.throws(() => validateEvent(event("lease_started", { ...registry, tenant: "" })));
+});
+test("city refunds and registry changes cannot masquerade as money from another treasury", () => {
+  const movement = {
+    wallet_from: "biz:1",
+    wallet_to: "player:bob.testnet",
+    amount: "20",
+    reference: "refund:1",
+    entity_id: "business:1",
+    business_id: 1,
+    order_reference: "original-order",
+    payment_reference: "original-admission",
+  };
+  for (const name of ["order_refunded", "admission_refunded"]) {
+    assert.doesNotThrow(() => validateEvent(event(name, movement)));
+    assert.throws(() => validateEvent(event(name, { ...movement, wallet_from: "biz:2" })));
+    assert.throws(() => validateEvent(event(name, { ...movement, business_id: 2 })));
+  }
+  assert.throws(() => validateEvent(event("admission_refunded", { ...movement, wallet_to: "npc:customer" })));
+  const registry = {
+    wallet_from: null,
+    wallet_to: null,
+    amount: "0",
+    reference: "registry:1",
+    entity_id: "business:1",
+    business_id: 1,
+    owner: "alice.testnet",
+    listing_price: "20",
+    source_wallet: "player:bob.testnet",
+    buyer: "bob.testnet",
+  };
+  for (const name of ["business_listed", "charge_cancelled", "order_cancelled"])
+    assert.doesNotThrow(() => validateEvent(event(name, registry)));
+  for (const [name, change] of [
+    ["business_listed", { listing_price: "-1" }],
+    ["charge_cancelled", { source_wallet: "" }],
+    ["order_cancelled", { buyer: "" }],
+  ] as const)
+    assert.throws(() => validateEvent(event(name, { ...registry, ...change })));
+  assert.doesNotThrow(() =>
+    validateEvent(event("charge_paid", { ...movement, entity_id: "player:bob.testnet" })),
+  );
+  assert.throws(() => validateEvent(event("charge_paid", { ...movement, entity_id: "biz:1" })));
+});

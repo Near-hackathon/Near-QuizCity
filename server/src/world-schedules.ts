@@ -9,6 +9,7 @@ export type NpcSchedule = {
   destinationSceneId: string | null;
   destinationBuildingId: string | null;
   destinationSpawnId: string | null;
+  patrolSpawnIds?: string[];
 };
 
 /** Deterministic daily routine: day 0 = Sunday, minute 0 = 00:00, end exclusive. */
@@ -135,4 +136,36 @@ export function assertNoScheduleOverlap(schedules: NpcSchedule[]): void {
       }
     }
   }
+}
+
+/** A walking break alternates reachable waypoints with a short, persisted pause. */
+export function advancePatrol(input: {
+  route: string[];
+  index: unknown;
+  waitUntil: unknown;
+  atDestination: boolean;
+  reset: boolean;
+  now: Date;
+}): { index: number; waitUntil: string | null } {
+  if (
+    input.route.length < 2 ||
+    input.route.length > 8 ||
+    input.route.some((id) => typeof id !== "string" || !id) ||
+    new Set(input.route).size !== input.route.length
+  )
+    throw new Error("NPC patrol requires two to eight distinct waypoint IDs");
+  const index =
+    !input.reset &&
+    typeof input.index === "number" &&
+    Number.isInteger(input.index) &&
+    input.index >= 0 &&
+    input.index < input.route.length
+      ? input.index
+      : 0;
+  if (input.reset || !input.atDestination) return { index, waitUntil: null };
+  const deadline = typeof input.waitUntil === "string" ? Date.parse(input.waitUntil) : NaN;
+  if (!Number.isFinite(deadline))
+    return { index, waitUntil: new Date(input.now.getTime() + 12_000).toISOString() };
+  if (input.now.getTime() < deadline) return { index, waitUntil: input.waitUntil as string };
+  return { index: (index + 1) % input.route.length, waitUntil: null };
 }

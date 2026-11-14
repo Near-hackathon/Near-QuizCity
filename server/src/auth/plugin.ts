@@ -1,3 +1,4 @@
+import { isBrowserAccount } from "@quiz-city/protocol";
 import type { Sql } from "postgres";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AppError } from "../errors.js";
@@ -33,6 +34,12 @@ const PUBLIC_ROUTES = new Set([
   "GET /v1/npcs",
   "GET /v1/jobs",
   "GET /v1/quizzes",
+  "GET /v1/profiles",
+  "POST /v1/profiles",
+  "POST /v1/profiles/device",
+  "POST /v1/profiles/enter",
+  "GET /v1/profiles/:id/wallet",
+  "POST /v1/profiles/:id/wallet/retry",
   "POST /v1/auth/nonce",
   "POST /v1/auth/verify",
 ]);
@@ -100,6 +107,19 @@ export function registerAuthPlugin(
     );
     if (!principal) {
       throw new AppError("UNAUTHORIZED", "session is invalid, expired, or revoked", 401);
+    }
+    if (
+      isBrowserAccount(principal.accountId) &&
+      request.method === "POST" &&
+      !["/v1/profiles/onboarding", "/v1/auth/logout", "/v1/profiles/:id/wallet/backup"].includes(
+        request.routeOptions.url ?? "",
+      )
+    ) {
+      throw new AppError(
+        "WALLET_REQUIRED",
+        "Connect a wallet in your phone before using the city economy.",
+        403,
+      );
     }
     if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
       const csrf = request.headers["x-csrf-token"];

@@ -1,15 +1,38 @@
 import { isBlocked, type WorldPoint, type WorldScene } from "./schema.js";
 
 export type RouteResult = { path: WorldPoint[] } | { error: "BLOCKED" | "NO_PATH" };
+export function facingForStep(dx: number, dy: number) {
+  const x = Math.sign(dx - dy),
+    y = Math.sign(dx + dy);
+  return y === 0
+    ? x > 0
+      ? "east"
+      : "west"
+    : x === 0
+      ? y > 0
+        ? "south"
+        : "north"
+      : y > 0
+        ? x > 0
+          ? "south_east"
+          : "south_west"
+        : x > 0
+          ? "north_east"
+          : "north_west";
+}
 
 const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
   [1, 0],
   [0, 1],
   [-1, 0],
+  [1, -1],
+  [1, 1],
+  [-1, 1],
+  [-1, -1],
 ];
 
-/** Deterministic 4-neighbour A* with stable tie-breaking by (f, y, x). */
+/** Deterministic 8-neighbour A*; diagonals require both adjacent sides clear. */
 export function findPath(scene: WorldScene, start: WorldPoint, target: WorldPoint): RouteResult {
   if (isBlocked(scene, start.x, start.y)) return { error: "BLOCKED" };
   if (isBlocked(scene, target.x, target.y)) return { error: "BLOCKED" };
@@ -42,12 +65,21 @@ export function findPath(scene: WorldScene, start: WorldPoint, target: WorldPoin
     for (const [dx, dy] of NEIGHBORS) {
       const next = { x: current.point.x + dx, y: current.point.y + dy };
       if (isBlocked(scene, next.x, next.y)) continue;
-      const g = current.g + 1;
+      if (
+        dx !== 0 &&
+        dy !== 0 &&
+        (isBlocked(scene, current.point.x + dx, current.point.y) ||
+          isBlocked(scene, current.point.x, current.point.y + dy))
+      )
+        continue;
+      const g = current.g + (dx !== 0 && dy !== 0 ? 14 : 10);
       const nextKey = key(next);
       if (g >= (best.get(nextKey) ?? Number.POSITIVE_INFINITY)) continue;
       best.set(nextKey, g);
       came.set(nextKey, current.point);
-      const heuristic = Math.abs(next.x - target.x) + Math.abs(next.y - target.y);
+      const hx = Math.abs(next.x - target.x),
+        hy = Math.abs(next.y - target.y);
+      const heuristic = Math.min(hx, hy) * 14 + Math.abs(hx - hy) * 10;
       open.set(nextKey, { point: next, g, f: g + heuristic });
     }
   }

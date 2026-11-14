@@ -1,6 +1,17 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 export type ErrorCode =
+  | "DEVICE_REQUIRED"
+  | "FAUCET_UNAVAILABLE"
+  | "FAUCET_RATE_LIMITED"
+  | "ACCESS_KEY_MISMATCH"
+  | "SIGNUP_LIMIT"
+  | "WALLET_BUSY"
+  | "CONTRACT_UPGRADE_REQUIRED"
+  | "WALLET_REQUIRED"
+  | "PROFILE_LIMIT"
+  | "USERNAME_TAKEN"
+  | "PROFILE_NOT_FOUND"
   | "VALIDATION_ERROR"
   | "INVALID_AMOUNT"
   | "UNAUTHORIZED"

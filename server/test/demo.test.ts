@@ -92,6 +92,7 @@ test("config endpoint exposes no secrets", async () => {
     const res = await app.inject({ method: "GET", url: "/v1/config" });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.json(), {
+      autoTestnetWallets: false,
       demoMode: true,
       networkId: "testnet",
       contractId: "quizcity.testnet",

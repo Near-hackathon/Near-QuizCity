@@ -1,4 +1,5 @@
 import type { Sql } from "postgres";
+import { attachResearchTask } from "./research-tasks.js";
 import { compareQc, subtractQc } from "./amount.js";
 import { sql } from "./db.js";
 import { viewContract } from "./near.js";
@@ -18,20 +19,24 @@ const RESERVED_STATUSES = [
 
 export const JOB_TEMPLATES = [
   {
-    title: "Research the city archives",
-    description: "Read the district records and file a short summary with Professor Kofi.",
+    title: "Research the foundations of NEAR",
+    description:
+      "Read Professor Reed's source brief, complete its knowledge check and submit a short research summary from your phone.",
   },
   {
-    title: "Index the library shelves",
-    description: "Sort the knowledge district catalogue and report missing volumes.",
+    title: "Prepare a cross-chain briefing",
+    description:
+      "Review the NEAR and Intents source brief, answer the knowledge check and explain your findings in a short summary.",
   },
   {
-    title: "Draft a quiz for new residents",
-    description: "Write five source-checked questions about the city's history.",
+    title: "Write a wallet safety note",
+    description:
+      "Study the source brief, pass the knowledge check and write a short note explaining safe wallet ownership.",
   },
   {
-    title: "Host a study session",
-    description: "Run an evening revision round at the learning hall.",
+    title: "Help a new resident learn",
+    description:
+      "Use the research brief and its knowledge check to prepare a short introduction for a new neighbour.",
   },
 ];
 
@@ -114,6 +119,7 @@ export async function tickNpcs(overrides: Partial<NpcDeps> = {}): Promise<NpcTic
     `;
 
     if (inserted.length > 0) {
+      await attachResearchTask(transaction, id);
       await appendJobPresentation(transaction, {
         jobId: id,
         status: "open",

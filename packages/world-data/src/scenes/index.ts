@@ -1,8 +1,10 @@
 import type { WorldScene } from "../schema.js";
+import { interiorFurnishings } from "../furnishings.js";
+import { residentSpawns } from "../residents.js";
 
 export const cityDistrict: WorldScene = {
   id: "city-district",
-  assetVersion: "1",
+  assetVersion: "2",
   width: 64,
   height: 48,
   tileSize: 32,
@@ -12,6 +14,12 @@ export const cityDistrict: WorldScene = {
     { x: 0, y: 0, width: 2, height: 48 },
     { x: 62, y: 0, width: 2, height: 48 },
     { x: 28, y: 18, width: 8, height: 6 },
+    // Facades occupy the cells behind their authoritative entrances.
+    { x: 17, y: 6, width: 7, height: 4 },
+    { x: 37, y: 8, width: 7, height: 4 },
+    { x: 47, y: 6, width: 7, height: 4 },
+    { x: 7, y: 32, width: 7, height: 4 },
+    { x: 42, y: 31, width: 7, height: 4 },
   ],
   doors: [
     {
@@ -159,8 +167,8 @@ function simpleInterior(input: {
 
 export const apartmentInterior = simpleInterior({
   id: "apartment-interior",
-  width: 14,
-  height: 12,
+  width: 18,
+  height: 14,
   exteriorDoor: "apartment-door-exterior",
   door: "apartment-spawn",
   defaultSpawn: "apartment-default",
@@ -204,7 +212,6 @@ export const quizCentreInterior: WorldScene = {
     { x: 0, y: 15, width: 20, height: 1 },
     { x: 0, y: 0, width: 1, height: 16 },
     { x: 19, y: 0, width: 1, height: 16 },
-    { x: 6, y: 6, width: 8, height: 3 },
   ],
   doors: [
     {
@@ -234,3 +241,44 @@ export const worldScenes: WorldScene[] = [
   universityInterior,
   cafeInterior,
 ];
+
+// One inventory drives visual placement and authoritative prop footprints.
+for (const scene of worldScenes) {
+  scene.spawns.push(...(residentSpawns[scene.id] ?? []));
+  scene.assetVersion =
+    scene.id === "city-district"
+      ? "6"
+      : ["apartment-interior", "quiz-centre-interior"].includes(scene.id)
+        ? "5"
+        : "4";
+  const props: NonNullable<WorldScene["props"]> = [];
+  const add = (kind: NonNullable<WorldScene["props"]>[number]["kind"], x: number, y: number, width = 1) =>
+    props.push({ id: `${scene.id}-${kind}-${x}-${y}`, kind, x, y, width, height: 1 });
+  if (scene.id === "city-district") {
+    for (let x = 4; x < 60; x += 5) {
+      add("lamp", x, 29);
+      add("tree", x, 43);
+    }
+    for (const [x, y] of [
+      [25, 32],
+      [34, 37],
+      [37, 33],
+      [24, 39],
+    ])
+      add("tree", x, y);
+    add("bench", 29, 35);
+  } else {
+    if (scene.id !== "apartment-interior") {
+      add("bookshelf", 4, 3);
+      add("armchair", scene.width - 4, 3);
+    }
+  }
+  props.push(
+    ...(interiorFurnishings[scene.id] ?? []).map((item) => ({
+      ...item,
+      id: `${scene.id}-${item.kind}-${item.x}-${item.y}`,
+    })),
+  );
+  scene.props = props;
+  scene.blocked.push(...props.map(({ x, y, width, height }) => ({ x, y, width, height })));
+}

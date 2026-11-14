@@ -32,6 +32,7 @@ export const HealthResponse = Type.Object(
 export const ConfigResponse = Type.Object(
   {
     demoMode: Type.Boolean(),
+    autoTestnetWallets: Type.Optional(Type.Boolean()),
     networkId: Type.String(),
     contractId: Type.String(),
     protocolVersion: Type.String(),

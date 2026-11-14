@@ -1,0 +1,320 @@
+{
+  "sceneId": "quiz-centre-interior",
+  "assetVersion": "5",
+  "orientation": "isometric",
+  "renderorder": "right-down",
+  "tilewidth": 32,
+  "tileheight": 16,
+  "width": 20,
+  "height": 16,
+  "infinite": false,
+  "version": "1.10",
+  "layers": [
+    {
+      "id": 1,
+      "name": "ground",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 2,
+      "name": "roads",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 3,
+      "name": "pavement",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 4,
+      "name": "lower_props",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 5,
+      "name": "buildings",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 6,
+      "name": "upper_occlusion",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 7,
+      "name": "collision",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 6001,
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 1
+        },
+        {
+          "id": 6002,
+          "x": 0,
+          "y": 15,
+          "width": 20,
+          "height": 1
+        },
+        {
+          "id": 6003,
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 16
+        },
+        {
+          "id": 6004,
+          "x": 19,
+          "y": 0,
+          "width": 1,
+          "height": 16
+        },
+        {
+          "id": 6005,
+          "x": 4,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6006,
+          "x": 16,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6007,
+          "x": 3,
+          "y": 7,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6008,
+          "x": 4,
+          "y": 8,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6009,
+          "x": 15,
+          "y": 7,
+          "width": 2,
+          "height": 1
+        },
+        {
+          "id": 6010,
+          "x": 16,
+          "y": 8,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6011,
+          "x": 17,
+          "y": 3,
+          "width": 1,
+          "height": 1
+        },
+        {
+          "id": 6012,
+          "x": 2,
+          "y": 12,
+          "width": 1,
+          "height": 1
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "navigation",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": []
+    },
+    {
+      "id": 9,
+      "name": "interactions",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "serverId": "quiz-spawn",
+          "id": 8001,
+          "kind": "door",
+          "x": 10,
+          "y": 14,
+          "radius": 2,
+          "targetSceneId": "city-district",
+          "targetSpawnId": "quiz-door-exterior",
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "quiz-spawn"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 10
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 14
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            },
+            {
+              "name": "targetSceneId",
+              "type": "string",
+              "value": "city-district"
+            },
+            {
+              "name": "targetSpawnId",
+              "type": "string",
+              "value": "quiz-door-exterior"
+            }
+          ]
+        },
+        {
+          "serverId": "quiz-desk",
+          "id": 8002,
+          "kind": "quiz",
+          "x": 10,
+          "y": 9,
+          "radius": 2,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "quiz"
+            },
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "quiz-desk"
+            },
+            {
+              "name": "gridX",
+              "type": "int",
+              "value": 10
+            },
+            {
+              "name": "gridY",
+              "type": "int",
+              "value": 9
+            },
+            {
+              "name": "radius",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "spawns",
+      "type": "objectgroup",
+      "visible": false,
+      "opacity": 1,
+      "objects": [
+        {
+          "id": 9001,
+          "kind": "door",
+          "x": 10,
+          "y": 14,
+          "serverId": "quiz-spawn",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "quiz-spawn"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "door"
+            }
+          ]
+        },
+        {
+          "id": 9002,
+          "kind": "player_default",
+          "x": 10,
+          "y": 11,
+          "serverId": "quiz-default",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "quiz-default"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "player_default"
+            }
+          ]
+        },
+        {
+          "id": 9003,
+          "kind": "npc_waypoint",
+          "x": 10,
+          "y": 4,
+          "serverId": "yaw-quiz-desk",
+          "properties": [
+            {
+              "name": "serverId",
+              "type": "string",
+              "value": "yaw-quiz-desk"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "npc_waypoint"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

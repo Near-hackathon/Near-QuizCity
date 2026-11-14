@@ -1,11 +1,16 @@
+import { registerQuizMatchRoutes } from "./quiz-match-routes.js";
+import { registerCityHealth } from "./city-health.js";
+import { registerCityEconomyRoutes, registerCityReviewRoutes } from "./city-economy-routes.js";
 import type { FastifyInstance } from "fastify";
 import type { Sql } from "postgres";
 import { Type } from "@sinclair/typebox";
 import type { Static } from "@sinclair/typebox";
 import { differenceQc, subtractQc } from "./amount.js";
 import { pageParams, pageResult, PageQuery } from "./cursor.js";
-import { sql } from "./db.js";
+import { sql as defaultSql } from "./db.js";
 import { viewContract, type ContractStats } from "./near.js";
+import { registerCommerceRoutes } from "./commerce-routes.js";
+import { registerResearchRoutes } from "./research-routes.js";
 import { registerRoutes } from "./routes.js";
 import {
   BusinessesPage,
@@ -26,8 +31,15 @@ import { syncEconomy } from "./sync.js";
 import { requireAuth, requireRole } from "./auth/plugin.js";
 import { buildWorldBootstrap } from "./world-bootstrap.js";
 
-export function registerDataRoutes(app: FastifyInstance, dependencies: { db?: Sql } = {}): void {
-  const worldDb = dependencies.db ?? sql;
+export function registerDataRoutes(
+  app: FastifyInstance,
+  dependencies: {
+    db?: Sql;
+    movement?: { stepMs: number; tilesPerTick: number };
+  } = {},
+): void {
+  const sql = dependencies.db ?? defaultSql;
+  const worldDb = sql;
   app.get<{ Querystring: { sceneId?: string } }>(
     "/world/bootstrap",
     {
@@ -42,6 +54,7 @@ export function registerDataRoutes(app: FastifyInstance, dependencies: { db?: Sq
     async (request) => {
       const auth = requireAuth(request);
       return buildWorldBootstrap(worldDb, auth.accountId, request.query.sceneId!, {
+        movement: dependencies.movement,
         sessionId: auth.sessionTokenHash,
       });
     },
@@ -193,7 +206,13 @@ export function registerDataRoutes(app: FastifyInstance, dependencies: { db?: Sq
     },
   );
 
-  registerRoutes(app);
+  registerRoutes(app, { db: sql });
+  registerResearchRoutes(app, sql);
+  registerCommerceRoutes(app, sql);
+  registerCityEconomyRoutes(app, sql);
+  registerQuizMatchRoutes(app, sql);
+  registerCityReviewRoutes(app, sql);
+  registerCityHealth(app, sql);
 
   app.get<{ Querystring: Static<typeof PageQuery> }>(
     "/snapshots",

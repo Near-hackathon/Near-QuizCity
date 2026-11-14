@@ -1,8 +1,14 @@
 import type { Sql } from "postgres";
 import { appendWorldEvents, type AppendWorldEvent } from "./world-events.js";
 import { advancePath, planMove, sceneById } from "./world-navigation.js";
-import { assertNoScheduleOverlap, evaluateSchedule, type NpcSchedule } from "./world-schedules.js";
+import {
+  assertNoScheduleOverlap,
+  evaluateSchedule,
+  advancePatrol,
+  type NpcSchedule,
+} from "./world-schedules.js";
 import { startWorker, type WorkerHandle } from "./worker.js";
+import { npcTravelDoor } from "./npc-travel.js";
 
 const MAX_NPCS_PER_TICK = 200;
 
@@ -30,6 +36,7 @@ type ScheduleRow = {
   destination_scene_id: string | null;
   destination_building_id: string | null;
   destination_spawn_id: string | null;
+  parameters: { patrol?: string[] } | null;
 };
 
 export type NpcSimulationResult = {
@@ -52,6 +59,7 @@ function schedule(row: ScheduleRow): NpcSchedule {
     destinationSceneId: row.destination_scene_id,
     destinationBuildingId: row.destination_building_id,
     destinationSpawnId: row.destination_spawn_id,
+    patrolSpawnIds: row.parameters?.patrol,
   };
 }
 
@@ -93,7 +101,7 @@ export async function tickNpcSimulation(
 
     const schedules = await transaction<ScheduleRow[]>`
       select id, npc_id, sequence, day_mask, start_minute, end_minute, activity,
-             destination_scene_id, destination_building_id, destination_spawn_id
+             destination_scene_id, destination_building_id, destination_spawn_id, parameters
       from npc_schedules order by npc_id, sequence
     `;
     const byNpc = new Map<string, NpcSchedule[]>();
@@ -120,7 +128,22 @@ export async function tickNpcSimulation(
         schedules: byNpc.get(runtime.npc_id) ?? [],
         seed: runtime.npc_id,
       });
-      const selected = decision.schedule;
+      let selected = decision.schedule;
+      const [visit] =
+        await transaction`select * from npc_shop_visits where npc_id=${runtime.npc_id} and status in ('walking','queued','submitting','unknown') order by created_at limit 1`;
+      if (visit)
+        selected = {
+          id: `shop:${visit.id}`,
+          npcId: runtime.npc_id,
+          sequence: 0,
+          dayMask: 127,
+          startMinute: 0,
+          endMinute: 1440,
+          activity: visit.status === "unknown" ? "checking_purchase" : "queuing",
+          destinationSceneId: visit.destination_scene_id,
+          destinationBuildingId: null,
+          destinationSpawnId: visit.destination_spawn_id,
+        };
       const previousState = objectState(runtime.state);
       if (!selected?.destinationSceneId || !selected.destinationSpawnId) {
         inactive += 1;
@@ -151,6 +174,35 @@ export async function tickNpcSimulation(
         continue;
       }
 
+      const elapsed = runtime.last_simulated_at
+        ? options.now.getTime() - runtime.last_simulated_at.getTime()
+        : Number.POSITIVE_INFINITY;
+      const catchup = elapsed > options.catchupAfterMs;
+      const patrol = selected.patrolSpawnIds;
+      const currentWaypoint = patrol
+        ? sceneById(selected.destinationSceneId).spawns.find((point) => point.id === runtime.target_spawn_id)
+        : undefined;
+      const patrolStep = patrol
+        ? advancePatrol({
+            route: patrol,
+            index: previousState.patrol_index,
+            waitUntil: previousState.patrol_wait_until,
+            atDestination:
+              runtime.scene_id === selected.destinationSceneId &&
+              runtime.target_spawn_id === patrol[Number(previousState.patrol_index) || 0] &&
+              currentWaypoint?.x === runtime.x &&
+              currentWaypoint?.y === runtime.y,
+            reset: catchup || previousState.schedule_id !== selected.id,
+            now: options.now,
+          })
+        : null;
+      const destinationSpawnId = patrolStep ? patrol![patrolStep.index] : selected.destinationSpawnId;
+      // Patrols stay within their scheduled scene and use versioned waypoints.
+      for (const id of patrol ?? []) {
+        const scene = sceneById(selected.destinationSceneId);
+        const point = scene.spawns.find((point) => point.id === id && point.kind === "npc_waypoint");
+        if (!point) throw new Error(`invalid patrol waypoint for NPC schedule ${selected.id}`);
+      }
       const [spawn] = await transaction<
         {
           id: string;
@@ -161,7 +213,7 @@ export async function tickNpcSimulation(
       >`
         select sp.id, sp.scene_id, sp.x, sp.y from spawn_points sp
         join scenes scene on scene.id = sp.scene_id
-        where sp.id = ${selected.destinationSpawnId}
+        where sp.id = ${destinationSpawnId}
           and sp.scene_id = ${selected.destinationSceneId}
           and sp.active = true and scene.active = true
       `;
@@ -171,10 +223,6 @@ export async function tickNpcSimulation(
         throw new Error(`database/map spawn mismatch for NPC schedule ${selected.id}`);
       }
 
-      const elapsed = runtime.last_simulated_at
-        ? options.now.getTime() - runtime.last_simulated_at.getTime()
-        : Number.POSITIVE_INFINITY;
-      const catchup = elapsed > options.catchupAfterMs;
       const changedTarget =
         runtime.target_scene_id !== spawn.scene_id ||
         runtime.target_spawn_id !== spawn.id ||
@@ -185,47 +233,72 @@ export async function tickNpcSimulation(
       let sceneId = runtime.scene_id;
       let completed: boolean;
 
-      if (catchup || crossScene) {
+      if (catchup) {
         sceneId = spawn.scene_id;
         x = spawn.x;
         y = spawn.y;
         completed = true;
         recovered += catchup ? 1 : 0;
-      } else if (runtime.x === spawn.x && runtime.y === spawn.y) {
+      } else if (!crossScene && runtime.x === spawn.x && runtime.y === spawn.y) {
         completed = true;
       } else {
-        const path = planMove(runtime.scene_id, { x: runtime.x, y: runtime.y }, spawn).path;
-        const step = advancePath(path, options.tilesPerTick);
-        x = step.position.x;
-        y = step.position.y;
-        completed = x === spawn.x && y === spawn.y;
+        const exit = crossScene ? npcTravelDoor(runtime.scene_id, spawn.scene_id) : null;
+        if (exit && runtime.x === exit.x && runtime.y === exit.y) {
+          const arrival = sceneById(exit.targetSceneId).spawns.find(
+            (point) => point.id === exit.targetSpawnId,
+          );
+          if (!arrival) throw new Error("NPC doorway destination is unavailable");
+          const [persisted] = await transaction<{ x: number; y: number }[]>`
+            select x,y from spawn_points where id=${arrival.id} and scene_id=${exit.targetSceneId} and active=true`;
+          if (!persisted || persisted.x !== arrival.x || persisted.y !== arrival.y)
+            throw new Error("NPC doorway database/map mismatch");
+          sceneId = exit.targetSceneId;
+          x = arrival.x;
+          y = arrival.y;
+        } else {
+          const path = planMove(runtime.scene_id, { x: runtime.x, y: runtime.y }, exit ?? spawn).path;
+          const step = advancePath(path, options.tilesPerTick);
+          x = step.position.x;
+          y = step.position.y;
+        }
+        completed = sceneId === spawn.scene_id && x === spawn.x && y === spawn.y;
       }
+
+      const changedScene = runtime.scene_id !== sceneId;
+      const legTarget = sceneId === spawn.scene_id ? spawn : npcTravelDoor(sceneId, spawn.scene_id);
+      const legKey = `${sceneId}:${legTarget.x},${legTarget.y}`;
+      const changedLeg = previousState.path_target !== legKey;
+      const activity = completed ? selected.activity : "walking";
 
       const nextVersion = (BigInt(runtime.state_version) + 1n).toString();
       const drafts: AppendWorldEvent[] = [];
-      if (changedTarget || runtime.activity !== selected.activity) {
+      if (changedScene) {
+        drafts.push({
+          streamId: `scene:${runtime.scene_id}`,
+          sceneId: runtime.scene_id,
+          cityTime: options.now,
+          type: sceneId !== "city-district" ? "npc.entered_building" : "npc.exited_building",
+          entity: { entityType: "npc", entityId: runtime.npc_id },
+          payload: {
+            buildingId: `building-${(sceneId === "city-district" ? runtime.scene_id : sceneId).replace(/-interior$/, "")}`,
+          },
+          idempotencyKey: `npc-sim:${runtime.npc_id}:${nextVersion}:departure`,
+        });
+      }
+      if (changedTarget || changedScene || runtime.activity !== activity) {
         drafts.push({
           streamId: `scene:${sceneId}`,
           sceneId,
           cityTime: options.now,
           type: "npc.activity_changed",
           entity: { entityType: "npc", entityId: runtime.npc_id },
-          payload: { activity: selected.activity, stateVersion: nextVersion },
+          payload: { activity, stateVersion: nextVersion },
           idempotencyKey: `npc-sim:${runtime.npc_id}:${nextVersion}:activity`,
         });
       }
-      if (changedTarget && !completed) {
-        drafts.push({
-          streamId: `scene:${sceneId}`,
-          sceneId,
-          cityTime: options.now,
-          type: "npc.path_started",
-          entity: { entityType: "npc", entityId: runtime.npc_id },
-          payload: { sceneId, toX: spawn.x, toY: spawn.y, stateVersion: nextVersion },
-          idempotencyKey: `npc-sim:${runtime.npc_id}:${nextVersion}:path`,
-        });
-      }
-      if (completed && (changedTarget || runtime.x !== x || runtime.y !== y || crossScene)) {
+      const moved = runtime.x !== x || runtime.y !== y;
+      // Bounded leg checkpoints keep interaction prompts at the confirmed position.
+      if (changedScene || moved || (completed && changedTarget)) {
         drafts.push({
           streamId: `scene:${sceneId}`,
           sceneId,
@@ -236,15 +309,36 @@ export async function tickNpcSimulation(
           idempotencyKey: `npc-sim:${runtime.npc_id}:${nextVersion}:complete`,
         });
       }
+      if (
+        !completed &&
+        (changedTarget || changedLeg || changedScene || moved) &&
+        (x !== legTarget.x || y !== legTarget.y)
+      ) {
+        drafts.push({
+          streamId: `scene:${sceneId}`,
+          sceneId,
+          cityTime: options.now,
+          type: "npc.path_started",
+          entity: { entityType: "npc", entityId: runtime.npc_id },
+          payload: { sceneId, toX: legTarget.x, toY: legTarget.y, stateVersion: nextVersion },
+          idempotencyKey: `npc-sim:${runtime.npc_id}:${nextVersion}:path`,
+        });
+      }
 
       const [updated] = await transaction<{ npc_id: string }[]>`
         update npc_runtime set scene_id = ${sceneId}, x = ${x}, y = ${y},
-          activity = ${selected.activity}, target_scene_id = ${spawn.scene_id},
-          target_spawn_id = ${spawn.id}, target_x = ${spawn.x}, target_y = ${spawn.y},
+          activity = ${activity}, target_scene_id = ${spawn.scene_id},
+          target_spawn_id = ${spawn.id}, target_x = ${completed ? null : legTarget.x}, target_y = ${completed ? null : legTarget.y},
           state_version = state_version + 1,
           state = ${transaction.json({
             ...previousState,
             schedule_id: selected.id,
+            path_target: legKey,
+            patrol_index: patrolStep?.index ?? null,
+            patrol_wait_until:
+              patrolStep && completed
+                ? (patrolStep.waitUntil ?? new Date(options.now.getTime() + 12_000).toISOString())
+                : null,
             next_transition_at: decision.nextTransitionAt,
             variation: decision.variation,
             recovery: catchup ? "bounded_catchup" : null,

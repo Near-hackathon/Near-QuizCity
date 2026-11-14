@@ -5,6 +5,11 @@ export type AppEnv = "local" | "test" | "staging" | "production";
 export type AppConfig = {
   appEnv: AppEnv;
   demoMode: boolean;
+  autoTestnetWallets: boolean;
+  testnetWalletEncryptionKey: string | null;
+  testnetWalletFaucetUrl: string;
+  testnetWalletDailyLimit: number;
+  testnetWalletAccountSuffix: string;
   demoAccountsFile: string | null;
   port: number;
   host: string;
@@ -246,6 +251,8 @@ function appEnvironment(env: NodeJS.ProcessEnv): AppEnv {
 
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   const appEnv = appEnvironment(env);
+  if (env.AUTO_TESTNET_WALLETS !== undefined && !["0", "1"].includes(env.AUTO_TESTNET_WALLETS.trim()))
+    throw new ConfigError("AUTO_TESTNET_WALLETS must be 0 or 1");
 
   const demoRaw = env.DEMO_MODE?.trim() ?? "0";
   if (demoRaw !== "0" && demoRaw !== "1") {
@@ -286,6 +293,15 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   const config: AppConfig = {
     appEnv,
     demoMode,
+    autoTestnetWallets: env.AUTO_TESTNET_WALLETS?.trim() === "1",
+    testnetWalletEncryptionKey: optional(env, "TESTNET_WALLET_ENCRYPTION_KEY"),
+    testnetWalletFaucetUrl: url(
+      env,
+      "TESTNET_WALLET_FAUCET_URL",
+      "https://helper.nearprotocol.com/account",
+    ).toString(),
+    testnetWalletAccountSuffix: env.TESTNET_WALLET_ACCOUNT_SUFFIX?.trim() || "testnet",
+    testnetWalletDailyLimit: integer(env, "TESTNET_WALLET_DAILY_LIMIT", 8, 1, 100),
     demoAccountsFile: optional(env, "DEMO_ACCOUNTS_FILE"),
     port: integer(env, "PORT", 8787, 1, 65_535),
     host,
@@ -324,8 +340,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     worldMaxQueuedBytes: integer(env, "WORLD_MAX_QUEUED_BYTES", 1_048_576, 16_384, 16_777_216),
     worldReplayLimit: integer(env, "WORLD_REPLAY_LIMIT", 200, 1, 500),
     worldPresenceTimeoutMs: integer(env, "WORLD_PRESENCE_TIMEOUT_MS", 60_000, 10_000, 600_000),
-    worldFanoutPollMs: integer(env, "WORLD_FANOUT_POLL_MS", 1_000, 100, 30_000),
-    worldTickMs: integer(env, "WORLD_TICK_MS", 1_000, 100, 30_000),
+    worldFanoutPollMs: integer(env, "WORLD_FANOUT_POLL_MS", 100, 100, 30_000),
+    worldTickMs: integer(env, "WORLD_TICK_MS", 250, 100, 30_000),
     worldTilesPerTick: integer(env, "WORLD_TILES_PER_TICK", 1, 1, 8),
     worldMoveCooldownMs: integer(env, "WORLD_MOVE_COOLDOWN_MS", 250, 50, 10_000),
     worldMoveBurst: integer(env, "WORLD_MOVE_BURST", 4, 1, 32),
@@ -339,6 +355,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     throw new ConfigError("CHAIN_EVENT_SOURCE_URL is required for this environment");
   }
 
+  assertManagedWalletConfigurationIsSafe(config);
   assertDemoConfigurationIsSafe(config);
 
   return config;
@@ -347,6 +364,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
 export function redactedSummary(config: AppConfig): Record<string, unknown> {
   return {
     appEnv: config.appEnv,
+    autoTestnetWallets: config.autoTestnetWallets,
     demoMode: config.demoMode,
     networkId: config.networkId,
     rpcHost: new URL(config.rpcUrl).host,
@@ -377,4 +395,47 @@ export function redactedSummary(config: AppConfig): Record<string, unknown> {
     worldInteractionCooldownMs: config.worldInteractionCooldownMs,
     worldInteractionBurst: config.worldInteractionBurst,
   };
+}
+
+export function assertManagedWalletConfigurationIsSafe(
+  config: Pick<
+    AppConfig,
+    | "autoTestnetWallets"
+    | "networkId"
+    | "appEnv"
+    | "testnetWalletEncryptionKey"
+    | "testnetWalletFaucetUrl"
+    | "testnetWalletAccountSuffix"
+    | "rpcUrl"
+  >,
+) {
+  if (!config.autoTestnetWallets) return;
+  if (config.networkId !== "testnet" || config.appEnv === "production")
+    throw new ConfigError("AUTO_TESTNET_WALLETS is available only for non-production testnet");
+  if (
+    config.testnetWalletAccountSuffix !== "testnet" &&
+    !(
+      config.appEnv === "test" &&
+      isLoopbackHost(new URL(config.rpcUrl).hostname) &&
+      isValidAccountId(config.testnetWalletAccountSuffix) &&
+      config.testnetWalletAccountSuffix.length <= 28
+    )
+  )
+    throw new ConfigError("TESTNET_WALLET_ACCOUNT_SUFFIX may change only for a loopback test sandbox");
+  const key = config.testnetWalletEncryptionKey;
+  if (
+    !key ||
+    !/^[A-Za-z0-9+/]{43}=$/.test(key) ||
+    Buffer.from(key, "base64").length !== 32 ||
+    Buffer.from(key, "base64").toString("base64") !== key
+  )
+    throw new ConfigError("TESTNET_WALLET_ENCRYPTION_KEY must be a canonical base64 32-byte key");
+  const endpoint = new URL(config.testnetWalletFaucetUrl);
+  if (
+    endpoint.protocol !== "https:" &&
+    !(config.appEnv === "test" && isLoopbackHost(endpoint.hostname) && endpoint.protocol === "http:")
+  )
+    throw new ConfigError("TESTNET_WALLET_FAUCET_URL requires HTTPS");
+  if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash)
+    throw new ConfigError("TESTNET_WALLET_FAUCET_URL cannot contain credentials, query or fragment");
 }

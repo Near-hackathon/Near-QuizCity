@@ -1,3 +1,6 @@
+import { projectNpcPurchase } from "./npc-shopping.js";
+import { projectCityOperation } from "./city-economy.js";
+import { projectConfirmedOrder } from "./commerce.js";
 import type { Sql, TransactionSql } from "postgres";
 import { addQc, differenceQc, subtractQc } from "./amount.js";
 import { AppError } from "./errors.js";
@@ -374,6 +377,15 @@ export async function applyChainOwnedProjection(
       await recordOwnershipHistory(transaction, event, "property", String(id), runtime);
       break;
     }
+    case "lease_offered": {
+      const rent = String(data.rent);
+      await transaction`insert into property_rent_offers(property_id,owner_wallet,rent,period_days,active) values (${Number(data.property_id)},${String(data.owner_wallet)},${rent === "0" ? "1" : rent},${Number(data.period_days)},${rent !== "0"}) on conflict(property_id) do update set owner_wallet=excluded.owner_wallet,rent=excluded.rent,period_days=excluded.period_days,active=excluded.active`;
+      break;
+    }
+    case "business_listed": {
+      await transaction`insert into market_listings(id,seller_wallet,asset_type,asset_id,asking_price,status) values (${`business:${data.business_id}`},${`player:${data.owner}`},'business',${String(data.business_id)},${String(data.listing_price)},${data.listing_price === "0" ? "cancelled" : "active"}) on conflict(id) do update set seller_wallet=excluded.seller_wallet,asking_price=excluded.asking_price,status=excluded.status`;
+      break;
+    }
     case "business_created": {
       const id = Number(data.id);
       await transaction`
@@ -395,6 +407,7 @@ export async function applyChainOwnedProjection(
       `;
       break;
     }
+    case "business_sold":
     case "business_transferred": {
       const id = Number(data.id);
       await transaction`
@@ -403,6 +416,7 @@ export async function applyChainOwnedProjection(
         where id = ${id}
       `;
       await recordOwnershipHistory(transaction, event, "business", String(id), runtime);
+      await transaction`update market_listings set status='sold' where id=${`business:${id}`}`;
       break;
     }
     case "service_paid": {
@@ -413,10 +427,7 @@ export async function applyChainOwnedProjection(
       break;
     }
     case "business_withdrawal": {
-      const id = Number(data.business_id);
-      await transaction`
-        update businesses set revenue_total = revenue_total - ${amount}::numeric where id = ${id}
-      `;
+      // Gross sales remain unchanged; the wallet delta records the withdrawal.
       break;
     }
     default:
@@ -430,6 +441,9 @@ export async function applyServerWorkflowProjection(
   event: ValidatedEvent,
   _runtime: ChainRuntime,
 ): Promise<void> {
+  await projectConfirmedOrder(transaction, event);
+  await projectCityOperation(transaction, event);
+  await projectNpcPurchase(transaction, event);
   const data = event.data[0];
   const amount = String(data.amount ?? "0");
   const reference = typeof data.reference === "string" ? data.reference : null;
@@ -449,6 +463,16 @@ export async function applyServerWorkflowProjection(
           jobId: reference.slice(4),
           txHash: event.txHash ?? null,
         });
+      }
+      break;
+    }
+    case "escrow_released": {
+      const match = reference?.match(/^settle:([^:]+):quiz:(.+)$/);
+      if (match) {
+        const [attempt] = await transaction`select funding_escrow_id from quiz_attempts where id=${match[2]}`;
+        if (attempt?.funding_escrow_id !== match[1])
+          throw new AppError("CONFLICT", "Quiz reservation does not match its payment", 409);
+        await projectQuizReward(transaction, { attemptId: match[2], txHash: event.txHash ?? null, amount });
       }
       break;
     }

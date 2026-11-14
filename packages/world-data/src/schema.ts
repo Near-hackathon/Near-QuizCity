@@ -1,5 +1,24 @@
 export type BlockedRect = { x: number; y: number; width: number; height: number };
 export type WorldPoint = { x: number; y: number };
+export type WorldProp = WorldPoint & {
+  id: string;
+  kind:
+    | "tree"
+    | "lamp"
+    | "bench"
+    | "bookshelf"
+    | "armchair"
+    | "sofa"
+    | "desk"
+    | "chair"
+    | "bed"
+    | "counter"
+    | "plant"
+    | "fridge"
+    | "stove";
+  width: number;
+  height: number;
+};
 export type WorldDoor = {
   id: string;
   x: number;
@@ -28,6 +47,7 @@ export type WorldScene = {
   height: number;
   tileSize: number;
   blocked: BlockedRect[];
+  props?: WorldProp[];
   doors: WorldDoor[];
   interactions: WorldInteraction[];
   spawns: WorldSpawn[];

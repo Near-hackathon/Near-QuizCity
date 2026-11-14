@@ -1,7 +1,9 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { NETWORK } from "../wallet/rpc";
 
 export function AppLayout() {
+  const path = useLocation().pathname;
+  if (path === "/" || path === "/play" || path.startsWith("/interior/")) return <Outlet />;
   return (
     <div className="shell">
       <nav aria-label="Primary" className="row">

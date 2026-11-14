@@ -108,7 +108,13 @@ export function projectEconomicWorldEvents(event: ValidatedEvent, sceneId: strin
           ...base,
           type: "business.state_changed",
           entity: { entityType: "business", entityId: businessId },
-          payload: { businessId, status: "open", revenueTotal: "0" },
+          payload: {
+            businessId,
+            status: "open",
+            revenueTotal: "0",
+            name: String(data.name),
+            propertyId: String(data.property_id),
+          },
           idempotencyKey: key("business"),
         },
       ];

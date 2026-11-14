@@ -87,7 +87,7 @@ test("door interactions move atomically to the reciprocal spawn and append strea
           targetType: "door",
           targetId: "library-door-exterior",
         },
-        { now: new Date(), cooldownMs: 0 },
+        { now: new Date("2026-11-13T10:00:00Z"), cooldownMs: 0 },
       ),
     );
     assert.equal(result.sceneId, "library-interior");
@@ -106,6 +106,97 @@ test("door interactions move atomically to the reciprocal spawn and append strea
         { event_type: "player.scene_changed", stream_id: "scene:city-district" },
         { event_type: "player.joined", stream_id: "scene:library-interior" },
       ],
+    );
+  });
+});
+
+test("apartment is enterable at night while library and university enforce their schedules", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await migrate(sql);
+    await seedWorld(sql);
+    const cases = [
+      ["apartment-interior", "22:00", true],
+      ["apartment-interior", "10:00", true],
+      ["library-interior", "10:00", true],
+      ["library-interior", "22:00", false],
+      ["university-interior", "10:00", true],
+      ["university-interior", "22:00", false],
+    ] as const;
+    for (const [index, [sceneId, time, allowed]] of cases.entries()) {
+      const door = worldScenes[0].doors.find((item) => item.targetSceneId === sceneId)!;
+      const sessionId = `hours-${index}`;
+      await sql`insert into player_presence (session_id, player_account, scene_id, x, y, facing)
+        values (${sessionId}, 'alice.testnet', 'city-district', ${door.x}, ${door.y}, 'north')`;
+      const action = () =>
+        sql.begin(async (tx) => {
+          const locked = await lockPresence(tx, sessionId, "alice.testnet");
+          return applyInteraction(
+            tx,
+            locked,
+            {
+              messageId: `door-${index}`,
+              clientSequence: "1",
+              sceneId: "city-district",
+              targetType: "door",
+              targetId: door.id,
+            },
+            { now: new Date(`2026-11-13T${time}:00Z`), cooldownMs: 0 },
+          );
+        });
+      if (allowed) assert.equal((await action()).sceneId, sceneId);
+      else {
+        await assert.rejects(action(), /TARGET_CLOSED/);
+        const [row] = await sql`select scene_id, x, y from player_presence where session_id = ${sessionId}`;
+        assert.deepEqual({ ...row }, { scene_id: "city-district", x: door.x, y: door.y });
+        const [receipts] =
+          await sql`select count(*)::int as count from world_command_receipts where session_id = ${sessionId}`;
+        assert.equal(receipts.count, 0);
+      }
+    }
+  });
+});
+
+test("NPC interaction follows its actual position in an interior without a static NPC zone", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await migrate(sql);
+    await seedWorld(sql);
+    await sql`update npc_runtime set scene_id = 'apartment-interior', x = 3, y = 3 where npc_id = 'professor-kofi'`;
+    await sql`insert into player_presence (session_id, player_account, scene_id, x, y, facing)
+      values ('npc-visitor', 'alice.testnet', 'apartment-interior', 3, 5, 'north')`;
+    await sql.begin(async (tx) => {
+      const locked = await lockPresence(tx, "npc-visitor", "alice.testnet");
+      const result = await applyInteraction(
+        tx,
+        locked,
+        {
+          messageId: "talk",
+          clientSequence: "1",
+          sceneId: "apartment-interior",
+          targetType: "npc",
+          targetId: "professor-kofi",
+        },
+        { now: new Date("2026-11-13T22:00:00Z"), cooldownMs: 0 },
+      );
+      assert.equal(result.sceneId, "apartment-interior");
+    });
+    await sql`update player_presence set x = 9, y = 9 where session_id = 'npc-visitor'`;
+    await assert.rejects(
+      sql.begin(async (tx) => {
+        const locked = await lockPresence(tx, "npc-visitor", "alice.testnet");
+        await applyInteraction(
+          tx,
+          locked,
+          {
+            messageId: "too-far",
+            clientSequence: "2",
+            sceneId: "apartment-interior",
+            targetType: "npc",
+            targetId: "professor-kofi",
+          },
+          { now: new Date("2026-11-13T22:00:01Z"), cooldownMs: 0 },
+        );
+      }),
+      /OUT_OF_RANGE/,
     );
   });
 });
@@ -139,7 +230,7 @@ test("movement ticks continue persisted paths without skipping tiles and commit 
       `;
       assert.equal(saved.x, 3);
       assert.equal(saved.y, expectedY);
-      assert.equal(saved.facing, "south");
+      assert.equal(saved.facing, "south_west");
       if (expectedY === 6) assert.deepEqual(saved.path, []);
     }
     const [eventCount] = await sql<{ count: number }[]>`
@@ -167,6 +258,79 @@ test("movement ticks continue persisted paths without skipping tiles and commit 
       from player_presence presence where session_id = 'walker'
     `;
     assert.deepEqual(afterRollback, { x: 3, y: 6, count: 3 });
+  });
+});
+
+test("an expired presence can move immediately after recreation without checkpoint identity collisions", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await migrate(sql);
+    await seedWorld(sql);
+    const generations: string[] = [];
+    for (let visit = 0; visit < 2; visit++) {
+      await sql`insert into player_presence (session_id, player_account, scene_id, x, y, facing)
+        values ('returning-session', 'alice.testnet', 'city-district', 3, 3, 'south')`;
+      const [identity] =
+        await sql`select presence_generation::text as generation from player_presence where session_id = 'returning-session'`;
+      generations.push(identity.generation);
+      const destination = visit === 0 ? { x: 3, y: 4 } : { x: 4, y: 3 };
+      await sql.begin(async (tx) => {
+        const locked = await lockPresence(tx, "returning-session", "alice.testnet");
+        await applyMoveIntent(
+          tx,
+          locked,
+          { messageId: "first-move", clientSequence: "1", sceneId: "city-district", ...destination },
+          { now: new Date("2026-11-13T10:00:00Z"), cooldownMs: 0 },
+        );
+      });
+      const tick = await tickWorldMovement(sql, {
+        now: new Date(`2026-11-13T10:0${visit}:01Z`),
+        tilesPerTick: 1,
+      });
+      assert.equal(tick.advanced, 1);
+      const [saved] = await sql`select x, y from player_presence where session_id = 'returning-session'`;
+      assert.deepEqual({ ...saved }, destination);
+      if (visit === 0) await sql`delete from player_presence where session_id = 'returning-session'`;
+    }
+    assert.notEqual(generations[0], generations[1]);
+    const events =
+      await sql`select idempotency_key from world_events where event_type = 'player.checkpoint' and entity_id = 'alice.testnet'`;
+    assert.equal(events.length, 2);
+    assert.equal(new Set(events.map((event) => event.idempotency_key)).size, 2);
+  });
+});
+
+test("presence generation migration preserves existing positions and assigns distinct incarnation IDs", async () => {
+  await withTestSchema(async ({ sql }) => {
+    await runMigrations(
+      postgresMigrationStore(sql),
+      migrations.filter((m) => m.filename < "0025"),
+    );
+    await seedWorld(sql);
+    await sql`insert into player_presence (session_id, player_account, scene_id, x, y, facing, last_client_sequence)
+      values ('existing-session', 'alice.testnet', 'city-district', 20, 11, 'north', 42)`;
+    await runMigrations(
+      postgresMigrationStore(sql),
+      migrations.filter((m) => m.filename < "0026"),
+    );
+    await sql`insert into player_presence (session_id, player_account, scene_id, x, y, facing)
+      values ('new-session', 'bob.testnet', 'city-district', 21, 11, 'north')`;
+    const rows =
+      await sql`select session_id, x, y, last_client_sequence::text as sequence, presence_generation::text as generation from player_presence order by session_id`;
+    assert.equal(rows[0].session_id, "existing-session");
+    assert.equal(rows[0].x, 20);
+    assert.equal(rows[0].y, 11);
+    assert.equal(rows[0].sequence, "42");
+    assert.match(rows[0].generation, /^[0-9a-f-]{36}$/);
+    assert.notEqual(rows[0].generation, rows[1].generation);
+    assert.equal(
+      (
+        await runMigrations(
+          postgresMigrationStore(sql),
+          migrations.filter((m) => m.filename < "0026"),
+        )
+      ).applied.length,
+      0,
+    );
   });
 });
 

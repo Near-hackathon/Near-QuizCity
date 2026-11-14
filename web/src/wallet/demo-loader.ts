@@ -1,10 +1,16 @@
 import type { MessageSigner, SendTransactionInput } from "./types";
 
 type DemoModule = {
+  clearDemoKeys(): void;
   demoSigner(accountId: string): MessageSigner | null;
   registerDemoKey(accountId: string, publicKey: string, secretKey: string): Promise<void>;
   demoTransaction(accountId: string, input: SendTransactionInput): Promise<{ txHash: string } | null>;
 };
+
+export async function clearDemoKeys(): Promise<void> {
+  const module = await load(true);
+  module?.clearDemoKeys();
+}
 
 async function load(demoMode: boolean): Promise<DemoModule | null> {
   if (!import.meta.env.DEV || !demoMode) return null;

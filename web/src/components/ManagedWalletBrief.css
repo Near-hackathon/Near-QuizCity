@@ -1,0 +1,25 @@
+.managed-wallet-brief {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid #b8ccaf;
+  border-left: 4px solid #669177;
+  border-radius: 14px;
+  background: #edf3e6;
+  color: #243e38;
+}
+.managed-wallet-brief-step {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #466450;
+}
+.managed-wallet-brief p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.managed-wallet-brief .managed-wallet-brief-title {
+  font-size: 15px;
+  font-weight: 700;
+}

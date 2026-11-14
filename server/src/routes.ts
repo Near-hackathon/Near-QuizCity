@@ -1,3 +1,4 @@
+import { quizPaymentExpectation } from "./quiz-reconciler.js";
 import type { FastifyInstance } from "fastify";
 import type { Sql } from "postgres";
 import type { Static } from "@sinclair/typebox";
@@ -10,7 +11,7 @@ import { decodeJobCursor, encodeJobCursor, pageParams, pageResult, PageQuery } f
 import { ensureRole } from "./auth/repository.js";
 import { viewAllBusinesses, viewContract } from "./near.js";
 import { jobPaymentExpectation, finalizeJobPayment, type JobPaymentDeps } from "./job-payment.js";
-import { creditReward, payJob, type PayoutSubmission } from "./operator.js";
+import { creditReward, payJob, submitCityPayment, type PayoutSubmission } from "./operator.js";
 import {
   jobPaymentReference,
   markJobPaymentAttempt,
@@ -128,6 +129,7 @@ export type RouteDeps = {
   viewContract: typeof viewContract;
   viewAllBusinesses: typeof viewAllBusinesses;
   creditReward: typeof creditReward;
+  submitCityPayment: typeof submitCityPayment;
   payJob: typeof payJob;
   readChainBalance: typeof readChainBalance;
   setMirroredBalance: typeof setMirroredBalance;
@@ -142,6 +144,7 @@ const defaultDeps: RouteDeps = {
   viewContract,
   viewAllBusinesses,
   creditReward,
+  submitCityPayment,
   payJob,
   readChainBalance,
   setMirroredBalance,
@@ -151,12 +154,13 @@ const defaultDeps: RouteDeps = {
   insertLedgerEntries,
 };
 
-export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDeps): void {
+export function registerRoutes(app: FastifyInstance, deps: Partial<RouteDeps> = {}): void {
   const {
     db,
     viewContract,
     viewAllBusinesses,
     creditReward,
+    submitCityPayment,
     payJob,
     readChainBalance,
     setMirroredBalance,
@@ -164,7 +168,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
     verifyExpectedFunctionCall,
     verifyOperatorOutcome,
     insertLedgerEntries,
-  } = deps;
+  } = { ...defaultDeps, ...deps };
 
   const jobDeps: JobPaymentDeps = {
     db,
@@ -340,12 +344,26 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       const { id } = request.params;
       const accountId = requireAuth(request).accountId;
       const job = await db.begin(async (transaction) => {
+        const [fund] =
+          await transaction`select f.*,b.owner_account from funded_jobs f left join businesses b on b.id=f.business_id where f.job_id=${id} for update of f`;
+        if (
+          fund &&
+          (fund.creator_account === accountId ||
+            fund.owner_account === accountId ||
+            fund.state !== "active" ||
+            new Date(fund.deadline) <= new Date())
+        )
+          fail("This funded assignment is not available to this worker", 409);
         const [updated] = await transaction`
           update jobs set employee_account = ${accountId}, status = 'accepted', accepted_at = now()
           where id = ${id} and status = 'open'
           returning *
         `;
-        if (updated) await appendJobPresentation(transaction, { jobId: id, status: "accepted" });
+        if (updated) {
+          if (fund?.business_id)
+            await transaction`insert into business_staff(job_id,business_id,account_id) values (${id},${fund.business_id},${accountId}) on conflict(job_id) do nothing`;
+          await appendJobPresentation(transaction, { jobId: id, status: "accepted" });
+        }
         return updated;
       });
       if (!job) fail("job is not open", 409);
@@ -367,6 +385,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       const { deliverable } = request.body;
       const accountId = requireAuth(request).accountId;
       const job = await db.begin(async (transaction) => {
+        const [fund] =
+          await transaction`select state,deadline from funded_jobs where job_id=${id} for update`;
+        if (fund && (fund.state !== "active" || new Date(fund.deadline) <= new Date()))
+          fail("This assignment needs employer or independent review before submission", 409);
         const [updated] = await transaction`
           update jobs
           set status = 'submitted', deliverable = ${deliverable}, submitted_at = now()
@@ -394,6 +416,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       const { id } = request.params;
       const notes = request.body.notes ?? null;
       requireRole(request, ["operator", "admin"]);
+      const [fund] = await db`select job_id from funded_jobs where job_id=${id}`;
+      if (fund) fail("Funded work requires employer review or independent dispute resolution", 409);
       const job = await db.begin(async (transaction) => {
         const [updated] = await transaction`
           update jobs
@@ -433,7 +457,11 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       }
       if (job.status !== "verified") fail("job must be verified before payment", 409);
 
-      const reserved = await db.begin((transaction) => reserveJobPayment(transaction, id));
+      const reserved = await db.begin(async (transaction) => {
+        const [fund] = await transaction`select state from funded_jobs where job_id=${id} for update`;
+        if (fund && fund.state !== "active") fail("Resolve the employer review before payment", 409);
+        return reserveJobPayment(transaction, id);
+      });
       if (!reserved) {
         const [current] = await db`select * from jobs where id = ${id}`;
         if (current?.status === "paid") {
@@ -629,8 +657,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
     async (request) => {
       const { limit, cursor } = pageParams(request.query);
       const rows = await db<{ id: string }[]>`
-        select q.id, q.title, q.reward_pool, q.entry_fee, q.status,
-               (select count(*)::int from quiz_questions qq where qq.quiz_id = q.id) as questions
+        select q.id, q.title, q.reward_pool, q.entry_fee, q.status,q.creator_draft_id as draft_id,
+               least(q.question_count,(select count(*)::int from quiz_questions qq where qq.quiz_id = q.id)) as questions
         from quizzes q
         where (${cursor}::text is null or q.id > ${cursor})
         order by q.id limit ${limit + 1}
@@ -652,10 +680,16 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       const { id } = request.params;
       const accountId = requireAuth(request).accountId;
       try {
-        const { attemptId, questions } = await startQuizAttempt(db, { quizId: id, accountId });
+        const { attemptId, questions, expiresAt, passScore, rewardAmount } = await startQuizAttempt(db, {
+          quizId: id,
+          accountId,
+        });
         return {
           attemptId,
           quizId: id,
+          expiresAt,
+          passScore,
+          rewardAmount,
           questions: questions.map((question) => ({
             id: question.question_id,
             question: question.question,
@@ -770,7 +804,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       const wallet = playerWallet(accountId);
       const previous = await getMirroredBalance(wallet);
       try {
-        const result = await creditReward(wallet, rewardAmount, `quiz:${attemptId}`);
+        const payment = quizPaymentExpectation(attempt, config.operatorAccount);
+        const result = payment.escrow
+          ? await submitCityPayment("settle_escrow", payment.expectation.args)
+          : await creditReward(wallet, rewardAmount, payment.reference);
         if (result.kind === "unknown") {
           await db`
             update quiz_attempts
@@ -799,26 +836,15 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
         }
         // Persist the hash immediately; local finalization may fail afterward.
         await db`update quiz_attempts set reward_tx = ${result.txHash} where id = ${attemptId}`;
-        const verified = await verifyOperatorOutcome(result.outcome, result.txHash, {
-          signerId: config.operatorAccount,
-          method: "credit_reward",
-          args: { wallet, amount: rewardAmount, reference: `quiz:${attemptId}` },
-          events: [
-            {
-              name: "reward_issued",
-              entityId: wallet,
-              walletFrom: null,
-              walletTo: wallet,
-              amount: rewardAmount,
-              reference: `quiz:${attemptId}`,
-            },
-          ],
-        });
+        const verified = await verifyOperatorOutcome(result.outcome, result.txHash, payment.expectation);
         const balance = await readChainBalance(wallet, addQc(previous, rewardAmount));
         const proof = requireExpectedEvent(verified.events, {
-          name: "reward_issued",
-          entityId: wallet,
+          name: payment.eventName,
+          entityId: payment.entityId,
         });
+        const reservedBalance = payment.escrow
+          ? await readChainBalance(`gov:escrow.${payment.escrow}`)
+          : null;
         const consumption = consumptionContext(
           result.txHash,
           "credit_reward",
@@ -830,6 +856,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
         await db.begin(async (transaction) => {
           await consumeTransaction(transaction, consumption);
           await setMirroredBalance(transaction, wallet, balance);
+          if (payment.escrow && reservedBalance !== null)
+            await setMirroredBalance(transaction, `gov:escrow.${payment.escrow}`, reservedBalance);
           await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
           await projectQuizReward(transaction, {
             attemptId,
@@ -1106,6 +1134,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps = defaultDe
       await db.begin(async (transaction) => {
         await consumeTransaction(transaction, consumption);
         await transaction`update businesses set owner_account = ${newOwner} where id = ${businessId}`;
+        await transaction`update market_listings set status='cancelled' where asset_type='business' and asset_id=${String(businessId)}`;
         await insertLedgerEntries(transaction, ledgerEntriesFromEvents(verified.events));
         await recordOwnershipHistory(transaction, proof, "business", String(businessId), {
           networkId: config.networkId,

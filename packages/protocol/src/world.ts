@@ -143,6 +143,9 @@ export const BusinessStateEvent = Type.Object(
     payload: Type.Object(
       {
         businessId: Type.String({ minLength: 1, maxLength: 64 }),
+        name: Type.Optional(safeText(128)),
+        propertyId: Type.Optional(worldId),
+        stockAvailable: Type.Optional(Type.Integer({ minimum: 0 })),
         status: Type.Union([Type.Literal("open"), Type.Literal("closed"), Type.Literal("suspended")]),
         revenueTotal: QcAmount,
       },
@@ -159,6 +162,8 @@ export const JobPresentationEvent = Type.Object(
     payload: Type.Object(
       {
         jobId: Type.String({ minLength: 1, maxLength: 128 }),
+        npcId: Type.Optional(worldId),
+        hasOpenJobs: Type.Optional(Type.Boolean()),
         status: Type.Union([
           Type.Literal("open"),
           Type.Literal("accepted"),
@@ -216,6 +221,8 @@ export const PropertyPresentationEvent = Type.Object(
     type: Type.Literal("property.presentation_changed"),
     payload: Type.Object(
       {
+        condition: Type.Optional(Type.Integer({ minimum: 0, maximum: 100 })),
+        utilitiesActive: Type.Optional(Type.Boolean()),
         propertyId: Type.String({ minLength: 1, maxLength: 64 }),
         forSale: Type.Boolean(),
         price: QcAmount,
@@ -335,6 +342,19 @@ const building = Type.Object(
     entranceX: WorldCoordinate,
     entranceY: WorldCoordinate,
     entranceFacing: WorldDirection,
+    doorId: Type.Optional(worldId),
+    isOpen: Type.Optional(Type.Boolean()),
+    openingHours: Type.Optional(
+      Type.Object(
+        {
+          open: Type.String({ pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }),
+          close: Type.String({ pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+    propertyId: Type.Optional(Type.Union([worldId, Type.Null()])),
+    businessId: Type.Optional(Type.Union([worldId, Type.Null()])),
     status: Type.Union([Type.Literal("active"), Type.Literal("closed")]),
   },
   { additionalProperties: false },
@@ -354,6 +374,7 @@ const spawn = Type.Object(
 const npc = Type.Object(
   {
     npcId: worldId,
+    hasJob: Type.Optional(Type.Boolean()),
     sceneId,
     x: WorldCoordinate,
     y: WorldCoordinate,
@@ -367,6 +388,7 @@ const npc = Type.Object(
 const player = Type.Object(
   {
     accountId: AccountId,
+    displayName: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
     x: WorldCoordinate,
     y: WorldCoordinate,
     facing: WorldDirection,
@@ -377,6 +399,7 @@ const player = Type.Object(
 const currentPlayer = Type.Object(
   {
     accountId: AccountId,
+    displayName: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
     x: WorldCoordinate,
     y: WorldCoordinate,
     facing: WorldDirection,
@@ -394,6 +417,28 @@ export const WorldBootstrap = Type.Object(
     cityTime: IsoTimestamp,
     streamId: WorldStreamId,
     lastSequence: WorldSequence,
+    npcDirectory: Type.Optional(
+      Type.Array(
+        Type.Object(
+          {
+            npcId: worldId,
+            sceneId,
+            activity: safeText(64),
+          },
+          { additionalProperties: false },
+        ),
+        { maxItems: 200 },
+      ),
+    ),
+    movement: Type.Optional(
+      Type.Object(
+        {
+          stepMs: Type.Integer({ minimum: 100, maximum: 30000 }),
+          tilesPerTick: Type.Integer({ minimum: 1, maximum: 8 }),
+        },
+        { additionalProperties: false },
+      ),
+    ),
     scene: Type.Object(
       {
         id: sceneId,
@@ -425,7 +470,18 @@ export const WorldBootstrap = Type.Object(
     npcs: Type.Array(npc, { maxItems: 200 }),
     players: Type.Array(player, { maxItems: 200 }),
     properties: Type.Array(
-      Type.Object({ id: worldId, forSale: Type.Boolean(), price: QcAmount }, { additionalProperties: false }),
+      Type.Object(
+        {
+          id: worldId,
+          condition: Type.Optional(Type.Integer({ minimum: 0, maximum: 100 })),
+          utilitiesActive: Type.Optional(Type.Boolean()),
+          forSale: Type.Boolean(),
+          price: QcAmount,
+          x: Type.Optional(WorldCoordinate),
+          y: Type.Optional(WorldCoordinate),
+        },
+        { additionalProperties: false },
+      ),
       { maxItems: 500 },
     ),
     businesses: Type.Array(
@@ -433,6 +489,8 @@ export const WorldBootstrap = Type.Object(
         {
           id: worldId,
           name: safeText(128),
+          propertyId: Type.Optional(worldId),
+          stockAvailable: Type.Optional(Type.Integer({ minimum: 0 })),
           status: Type.Union([Type.Literal("open"), Type.Literal("closed"), Type.Literal("suspended")]),
         },
         { additionalProperties: false },
@@ -465,7 +523,11 @@ export const WorldAckMessage = Type.Object(
   { additionalProperties: false },
 );
 export const WorldResyncMessage = Type.Object(
-  { type: Type.Literal("world.resync_required"), reason: safeText(256) },
+  {
+    type: Type.Literal("world.resync_required"),
+    reason: safeText(256),
+    sceneId: Type.Optional(sceneId),
+  },
   { additionalProperties: false },
 );
 export const WorldErrorMessage = Type.Object(
