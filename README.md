@@ -322,8 +322,8 @@ Connect `Near-hackathon/Near-QuizCity` with these Workers Builds settings:
 The root is required because `web/vite.config.ts` reads `../assets/maps` and the
 hoisted `../node_modules/phaser`. `wrangler.jsonc` serves `web/dist` as static
 assets with an SPA fallback; its `name` must match the Worker name in the
-Cloudflare dashboard. `web/public/_redirects` and `web/public/_headers` are
-supported by Workers static assets.
+Cloudflare dashboard. `web/public/_headers` is supported by Workers static assets, and the
+SPA fallback is handled by `not_found_handling` in `wrangler.jsonc`.
 
 Environment variables:
 
