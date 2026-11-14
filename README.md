@@ -315,7 +315,7 @@ and an API change does not rebuild the web client.
 Connect `Near-hackathon/Near-QuizCity` with these build settings:
 
 - Root directory: repository root
-- Build command: `npm ci && npm run build --workspace=web`
+- Build command: `npm run build --workspace=web`
 - Build output directory: `web/dist`
 - Node version: `20.20.0`
 - Build watch paths: `web/*`, `packages/protocol/*`, `packages/world-data/*`, `assets/maps/*`, `package.json`, `package-lock.json`
