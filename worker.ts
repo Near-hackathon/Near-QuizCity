@@ -4,14 +4,15 @@
 // only ever talks to this Worker's origin, so the session cookie stays first-party
 // and is not blocked as a third-party cookie.
 
-const API_ORIGIN = "https://near-quizcity.fly.dev";
+const DEFAULT_API_ORIGIN = "https://near-quizcity.fly.dev";
 
 export interface Env {
   ASSETS: Fetcher;
+  API_ORIGIN?: string;
 }
 
-function apiTarget(pathname: string, search: string): URL {
-  return new URL(`${pathname}${search}`, API_ORIGIN);
+function apiTarget(pathname: string, search: string, apiOrigin: string): URL {
+  return new URL(`${pathname}${search}`, apiOrigin);
 }
 
 function forwardHeaders(request: Request, host: string): Headers {
@@ -20,9 +21,9 @@ function forwardHeaders(request: Request, host: string): Headers {
   return headers;
 }
 
-async function proxyHttp(request: Request): Promise<Response> {
+async function proxyHttp(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const target = apiTarget(url.pathname, url.search);
+  const target = apiTarget(url.pathname, url.search, env.API_ORIGIN ?? DEFAULT_API_ORIGIN);
   const init: RequestInit = {
     method: request.method,
     headers: forwardHeaders(request, target.host),
@@ -32,9 +33,9 @@ async function proxyHttp(request: Request): Promise<Response> {
   return fetch(target.toString(), init);
 }
 
-async function proxyWebSocket(request: Request): Promise<Response> {
+async function proxyWebSocket(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const target = apiTarget(url.pathname, url.search);
+  const target = apiTarget(url.pathname, url.search, env.API_ORIGIN ?? DEFAULT_API_ORIGIN);
   target.protocol = "wss:";
 
   const upstreamResponse = await fetch(target.toString(), {
@@ -92,8 +93,8 @@ export default {
     const isApi = url.pathname.startsWith("/v1/") || url.pathname.startsWith("/health/");
     if (!isApi) return env.ASSETS.fetch(request);
     if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
-      return proxyWebSocket(request);
+      return proxyWebSocket(request, env);
     }
-    return proxyHttp(request);
+    return proxyHttp(request, env);
   },
 } satisfies ExportedHandler<Env>;

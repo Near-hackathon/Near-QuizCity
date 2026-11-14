@@ -1,5 +1,6 @@
 import { PublicMatchesResponse, MatchResponse, MatchesResponse, QuizMatch } from "@quiz-city/protocol";
 import { forgetManagedProof } from "./wallet/managed-intents";
+import { browserApiBase } from "./api-base";
 import {
   CityOverview,
   CityHealth,
@@ -8,7 +9,7 @@ import {
   type CityCommandType,
   type QuizDraftInput,
 } from "@quiz-city/protocol";
-const API = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
+const API = browserApiBase();
 const CSRF_KEY = "quizcity.csrf";
 
 import type { Static, TSchema } from "@sinclair/typebox";

@@ -310,9 +310,15 @@ and an API change does not rebuild the web client.
 | API      | `server/`, `packages/`              | Fly.io using `server/Dockerfile` |
 | Contract | `contract/`                         | NEAR release artifact            |
 
-### Web: Cloudflare Workers
+### Web: Cloudflare Workers or Pages
 
-Connect `Near-hackathon/Near-QuizCity` with these Workers Builds settings:
+The web application must send `/v1/*` and `/health/*` through the same origin
+that serves the game. Browser-profile and session cookies are intentionally
+first-party; setting `VITE_API_URL` directly to Fly bypasses that boundary and
+causes returning residents to appear missing.
+
+For **Cloudflare Workers**, connect `Near-hackathon/Near-QuizCity` with these
+Workers Builds settings:
 
 - Root directory: repository root
 - Build command: `npm run build --workspace=web`
@@ -321,21 +327,30 @@ Connect `Near-hackathon/Near-QuizCity` with these Workers Builds settings:
 
 The root is required because `web/vite.config.ts` reads `../assets/maps` and the
 hoisted `../node_modules/phaser`. `wrangler.jsonc` serves `web/dist` as static
-assets and proxies `/v1/*` and `/health/*` to the Fly API, so the browser only
-ever talks to this origin. This keeps the session cookie first-party and avoids
-cross-site cookie blocking between `workers.dev` and `fly.dev`. Set the
-environment variables below so the frontend calls this Worker's own origin; the
-Worker proxies `/v1/*` and `/health/*` to Fly, and `WEB_ORIGIN` on Fly must equal
-that same Worker origin.
+assets and proxies `/v1/*` and `/health/*` to Fly.
 
 ```text
-VITE_API_URL=https://near-quiz-city.<your-subdomain>.workers.dev
 VITE_NEAR_NETWORK=testnet
 VITE_NEAR_RPC_URL=https://rpc.testnet.fastnear.com
 VITE_CONTRACT_ID=quizcity.testnet
 ```
 
-The API must allow the Worker origin through `WEB_ORIGIN`.
+Leave `VITE_API_URL` unset. Production builds then use the current browser
+origin automatically. Set `API_ORIGIN=https://near-quizcity.fly.dev` as a Worker
+variable only when using an API other than the default.
+
+For **Cloudflare Pages**, use the same root and build command, set output
+directory to `web/dist`, and leave `VITE_API_URL` unset or remove its old Fly
+value from the Pages dashboard. The repository's `functions/v1/` and
+`functions/health/` proxies are discovered by Pages and forward requests to
+`API_ORIGIN` (defaulting to `https://near-quizcity.fly.dev`). Set the Fly
+`WEB_ORIGIN` secret to the exact deployed Pages or Worker origin, such as
+`https://quiz-city.pages.dev`.
+
+After moving an existing browser from a direct Fly deployment to Pages/Workers,
+its old `qc_device` cookie cannot transfer domains. Clear the old local game
+session and enter again; recover a previously linked resident through its wallet.
+The API must allow the deployed Pages or Worker origin through `WEB_ORIGIN`.
 
 ### API: Fly.io
 

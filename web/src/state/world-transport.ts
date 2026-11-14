@@ -6,6 +6,7 @@ import {
   type WorldEventType,
   type WorldClientMessageType,
 } from "@quiz-city/protocol";
+import { browserApiBase } from "../api-base";
 
 export type WorldStatus = "offline" | "connecting" | "online" | "reconnecting" | "resyncing";
 
@@ -35,7 +36,7 @@ function websocketUrl(base: string): string {
 }
 
 export function createWorldTransport(options: Options = {}): WorldTransport {
-  const apiBase = options.apiBase ?? import.meta.env.VITE_API_URL ?? "http://localhost:8787";
+  const apiBase = options.apiBase ?? browserApiBase();
   const factory = options.socketFactory ?? ((url: string) => new WebSocket(url));
   const random = options.random ?? Math.random;
   const messageListeners = new Set<(message: WorldServerMessageType) => void>();
