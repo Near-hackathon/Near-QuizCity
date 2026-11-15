@@ -15,9 +15,11 @@ function apiTarget(pathname: string, search: string, apiOrigin: string): URL {
   return new URL(`${pathname}${search}`, apiOrigin);
 }
 
-function forwardHeaders(request: Request, host: string): Headers {
+function forwardHeaders(request: Request): Headers {
   const headers = new Headers(request.headers);
-  headers.set("host", host);
+  // `fetch(target)` derives Host from the target URL. Keeping a browser's
+  // original Host here can make an edge proxy reject or misroute the request.
+  headers.delete("host");
   return headers;
 }
 
@@ -26,7 +28,7 @@ async function proxyHttp(request: Request, env: Env): Promise<Response> {
   const target = apiTarget(url.pathname, url.search, env.API_ORIGIN ?? DEFAULT_API_ORIGIN);
   const init: RequestInit = {
     method: request.method,
-    headers: forwardHeaders(request, target.host),
+    headers: forwardHeaders(request),
     redirect: "manual",
   };
   if (request.method !== "GET" && request.method !== "HEAD") init.body = request.body;
@@ -36,15 +38,23 @@ async function proxyHttp(request: Request, env: Env): Promise<Response> {
 async function proxyWebSocket(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const target = apiTarget(url.pathname, url.search, env.API_ORIGIN ?? DEFAULT_API_ORIGIN);
-  target.protocol = "wss:";
 
-  const upstreamResponse = await fetch(target.toString(), {
-    headers: {
-      Upgrade: "websocket",
-      Cookie: request.headers.get("cookie") ?? "",
-      Origin: request.headers.get("origin") ?? "",
-    },
-  });
+  let upstreamResponse: Response;
+  try {
+    // The Workers runtime negotiates the WebSocket handshake from the Upgrade
+    // header; the URL itself stays https.
+    upstreamResponse = await fetch(target.toString(), {
+      headers: {
+        Upgrade: "websocket",
+        Cookie: request.headers.get("cookie") ?? "",
+        Origin: request.headers.get("origin") ?? "",
+      },
+    });
+  } catch (error) {
+    console.error("websocket upstream failed", error);
+    return new Response("The API did not accept the WebSocket upgrade.", { status: 502 });
+  }
+
   const upstream = upstreamResponse.webSocket;
   if (!upstream) {
     return new Response("The API did not accept the WebSocket upgrade.", { status: 502 });

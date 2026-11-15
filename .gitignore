@@ -120,3 +120,4 @@ new assets/
 
 # Obsolete generated copies; canonical game files now live in game-assets/runtime.
 web/public/game-assets/generated/
+benedict.txt
