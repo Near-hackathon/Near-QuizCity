@@ -46,6 +46,8 @@ async function proxyWebSocket(request: Request, env: Env): Promise<Response> {
     upstreamResponse = await fetch(target.toString(), {
       headers: {
         Upgrade: "websocket",
+        Connection: "Upgrade",
+        "Sec-WebSocket-Version": "13",
         Cookie: request.headers.get("cookie") ?? "",
         Origin: request.headers.get("origin") ?? "",
       },
@@ -57,7 +59,11 @@ async function proxyWebSocket(request: Request, env: Env): Promise<Response> {
 
   const upstream = upstreamResponse.webSocket;
   if (!upstream) {
-    return new Response("The API did not accept the WebSocket upgrade.", { status: 502 });
+    const body = await upstreamResponse.text().catch(() => "");
+    console.error("websocket upstream did not upgrade", upstreamResponse.status, body.slice(0, 200));
+    return new Response(body || "The API did not accept the WebSocket upgrade.", {
+      status: upstreamResponse.status || 502,
+    });
   }
 
   const [client, server] = Object.values(new WebSocketPair());
